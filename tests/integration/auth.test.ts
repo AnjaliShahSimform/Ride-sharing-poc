@@ -2,12 +2,11 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/app";
 import { prisma } from "../../src/lib/prisma";
+import { resetDb } from "./testDb";
 
 // Scoped to this integration suite only — pure unit tests elsewhere have no
 // business touching a database, so this cleanup must not be global.
-beforeEach(async () => {
-  await prisma.user.deleteMany();
-});
+beforeEach(resetDb);
 
 const validSignup = {
   name: "Anjali Rider",

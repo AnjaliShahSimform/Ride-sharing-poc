@@ -13,12 +13,41 @@ enum Role {
   ADMIN
 }
 
+enum RideStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  phone        String
-  passwordHash String
-  roles        Role[]
-  createdAt    DateTime @default(now())
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  phone         String
+  passwordHash  String
+  roles         Role[]
+  ridesAsDriver Ride[]
+  createdAt     DateTime @default(now())
+}
+
+model Ride {
+  id             String     @id @default(uuid())
+  driverId       String
+  driver         User       @relation(fields: [driverId], references: [id])
+  originLat      Float
+  originLng      Float
+  destLat        Float
+  destLng        Float
+  originLabel    String
+  destLabel      String
+  departureTime  DateTime
+  totalSeats     Int
+  seatsAvailable Int
+  estimatedCost  Decimal    @db.Decimal(10, 2)
+  status         RideStatus @default(SCHEDULED)
+  createdAt      DateTime   @default(now())
+
+  @@index([departureTime])
+  @@index([originLat, originLng])
+  @@index([destLat, destLng])
 }

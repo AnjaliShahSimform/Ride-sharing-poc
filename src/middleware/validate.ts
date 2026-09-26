@@ -9,3 +9,11 @@ export const validateBody = (schema: ZodSchema) => (req: Request, _res: Response
   req.body = schema.parse(req.body);
   next();
 };
+
+// Query string values arrive as strings (or arrays of strings) — schemas
+// passed here must use z.coerce for numbers/dates, same idea as validateBody
+// but for req.query instead of req.body.
+export const validateQuery = (schema: ZodSchema) => (req: Request, _res: Response, next: NextFunction) => {
+  req.query = schema.parse(req.query);
+  next();
+};

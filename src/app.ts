@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import pinoHttp from "pino-http";
 import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/auth.routes";
+import { ridesRouter } from "./modules/rides/rides.routes";
 import { logger } from "./lib/logger";
 
 export const app = express();
@@ -24,6 +25,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/rides", ridesRouter);
 
 // No route matched anything above this line.
 app.use((req, res) => {
