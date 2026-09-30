@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ride-sharing-poc
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Same pattern as docker-compose.yml's app service: apply pending
+    # migrations before the server starts accepting traffic.
+    dockerCommand: sh -c "npx prisma migrate deploy && node dist/server.js"
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render free instances spin down after 15 min idle and cold-start on
+      # the next request — migrate deploy runs again on every cold start too,
+      # which is safe: it's a no-op once all migrations are already applied.
+      - key: DATABASE_URL
+        sync: false # set manually in the Render dashboard to your Neon connection string
+      - key: JWT_SECRET
+        generateValue: true # Render generates and stores a random secret
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: LOG_LEVEL
+        value: info
