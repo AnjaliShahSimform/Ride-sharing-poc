@@ -11,6 +11,10 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "local", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  // Required even though only `prisma migrate` uses it directly — Prisma
+  // validates every env var referenced in schema.prisma's datasource block
+  // (including directUrl) whenever PrismaClient is instantiated.
+  DIRECT_URL: z.string().min(1, "DIRECT_URL is required"),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("1d"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),

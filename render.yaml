@@ -16,7 +16,9 @@ services:
       # the next request — migrate deploy runs again on every cold start too,
       # which is safe: it's a no-op once all migrations are already applied.
       - key: DATABASE_URL
-        sync: false # set manually in the Render dashboard to your Neon connection string
+        sync: false # Neon's POOLED connection string (the one with "-pooler" in the host)
+      - key: DIRECT_URL
+        sync: false # Neon's DIRECT (unpooled) connection string — required by prisma migrate deploy
       - key: JWT_SECRET
         generateValue: true # Render generates and stores a random secret
       - key: JWT_EXPIRES_IN

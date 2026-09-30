@@ -36,6 +36,10 @@ npx tsc -p tsconfig.json --noEmit  # type-check without emitting
 
 This machine has a `DATABASE_URL` exported somewhere in the environment (traced to a Claude Code shell snapshot, not a real profile file) pointing at the *other* project's Postgres container on port 5432. `src/config/env.ts` defends against this for the running app and for tests with `dotenv.config({ override: true })` — `.env` always wins there. **Raw `prisma` CLI commands are not covered** (Prisma's CLI does its own env loading and does not override an existing shell var), so `npx prisma migrate dev`, `migrate deploy`, `migrate status`, etc. run outside `npm run prisma:migrate` need `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/ride_sharing?schema=public` prefixed explicitly or they will silently target the wrong database.
 
+### Two datasource URLs: `DATABASE_URL` vs `DIRECT_URL`
+
+`prisma/schema.prisma`'s datasource block declares both `url` (→ `DATABASE_URL`) and `directUrl` (→ `DIRECT_URL`). Both env vars are required — Prisma validates every env var referenced in the datasource block whenever `PrismaClient` is instantiated, even for commands that don't use `directUrl`. Locally (and in `docker-compose.yml`) they're identical, pointing at the same plain Postgres container. In production against Neon they differ on purpose: `DATABASE_URL` is Neon's **pooled** connection string (used by the running app), `DIRECT_URL` is the **unpooled** one (used only by `prisma migrate`, whose advisory locks don't work reliably through a transaction-mode pooler). If you add a third environment (staging, another hosted Postgres), both vars need setting there too, not just one.
+
 ## Architecture
 
 ### Module layout

@@ -26,6 +26,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       LOG_LEVEL: ${LOG_LEVEL:-info}
