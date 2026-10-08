@@ -88,6 +88,18 @@ Integration tests use Supertest's `request.agent(app)` (not plain
 `request(app)`) wherever a cookie needs to persist across multiple
 requests — plain `request(app)` doesn't retain cookies between calls.
 
+CORS (`src/app.ts`) is locked to `env.FRONTEND_ORIGIN` with `credentials:
+true`; it must be set to the real deployed frontend's origin in production
+(`render.yaml` prompts for it, `sync: false`) or every credentialed
+cross-origin request from the actual frontend will silently fail CORS —
+the server starts fine either way, since the env var has a dev-only
+default, so a missing/wrong value doesn't surface as a startup error.
+
+`docker compose up`'s full-stack `app` service runs with `NODE_ENV:
+production` over plain `http://localhost:3000`, which means the
+`Secure; SameSite=None` cookie attributes get issued over HTTP — most
+browsers tolerate this for `localhost`, but Safari historically does not.
+
 ### Money and matching — two non-obvious data rules from the design spec
 
 - **Money is always `Decimal`, never `Float`**, end-to-end: `estimatedCost` is validated in `rides.schemas.ts` as a regex-checked *string* (`/^\d+(\.\d{1,2})?$/`), not coerced to a JS number, so it never passes through float arithmetic before reaching Prisma's `@db.Decimal(10, 2)` column.
