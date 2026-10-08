@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
 
 export function SignupPage() {
@@ -8,6 +8,7 @@ export function SignupPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"DRIVER" | "RIDER">("RIDER");
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -16,7 +17,7 @@ export function SignupPage() {
     e.preventDefault();
     setError(null);
     try {
-      await apiFetch("/api/auth/signup", { method: "POST", body: { name, email, phone, password } });
+      await apiFetch("/api/auth/signup", { method: "POST", body: { name, email, phone, password, role } });
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
       navigate("/rides");
     } catch (err) {
@@ -61,7 +62,7 @@ export function SignupPage() {
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </label>
-        <label className="mb-6 block text-sm font-medium text-gray-700">
+        <label className="mb-4 block text-sm font-medium text-gray-700">
           Password
           <input
             type="password"
@@ -71,12 +72,45 @@ export function SignupPage() {
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </label>
+        <fieldset className="mb-6">
+          <legend className="mb-2 block text-sm font-medium text-gray-700">I want to</legend>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                name="role"
+                value="RIDER"
+                checked={role === "RIDER"}
+                onChange={() => setRole("RIDER")}
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Ride
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                name="role"
+                value="DRIVER"
+                checked={role === "DRIVER"}
+                onChange={() => setRole("DRIVER")}
+                className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Drive
+            </label>
+          </div>
+        </fieldset>
         <button
           type="submit"
           className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           Sign up
         </button>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Already have an account?{" "}
+          <Link to="/login" className="font-medium text-blue-600 hover:underline">
+            Log in
+          </Link>
+        </p>
       </form>
     </div>
   );

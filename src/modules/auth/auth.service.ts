@@ -1,4 +1,3 @@
-import { Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { ConflictError, UnauthenticatedError } from "../../lib/AppError";
 import { signToken } from "../../lib/jwt";
@@ -6,10 +5,6 @@ import { prisma } from "../../lib/prisma";
 import type { LoginInput, SignupInput } from "./auth.schemas";
 
 const SALT_ROUNDS = 10;
-
-// Every user can act as both driver and rider — there is no separate
-// "driver account" vs "rider account". See design spec §2.
-const DEFAULT_ROLES: Role[] = [Role.DRIVER, Role.RIDER];
 
 function toPublicUser(user: { id: string; name: string; email: string; phone: string; roles: string[] }) {
   // Never let passwordHash leave the service layer, under any circumstance.
@@ -30,7 +25,7 @@ export async function signup(input: SignupInput) {
       email: input.email,
       phone: input.phone,
       passwordHash,
-      roles: DEFAULT_ROLES,
+      roles: [input.role],
     },
   });
 

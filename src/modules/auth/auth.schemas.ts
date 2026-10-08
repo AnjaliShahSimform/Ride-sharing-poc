@@ -5,6 +5,7 @@ export const signupSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(7, "phone must be a valid number"),
   password: z.string().min(8, "password must be at least 8 characters"),
+  role: z.enum(["DRIVER", "RIDER"]),
 });
 
 export const loginSchema = z.object({
