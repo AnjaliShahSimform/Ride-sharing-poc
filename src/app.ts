@@ -4,6 +4,7 @@ import express from "express";
 import helmet from "helmet";
 import { randomUUID } from "node:crypto";
 import pinoHttp from "pino-http";
+import { requireCsrfHeader } from "./middleware/csrf";
 import { errorHandler } from "./middleware/errorHandler";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
@@ -23,6 +24,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
+app.use(requireCsrfHeader);
 app.use(
   pinoHttp({
     logger,
