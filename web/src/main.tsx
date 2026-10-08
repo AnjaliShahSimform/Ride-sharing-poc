@@ -5,9 +5,13 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { queryClient } from "./lib/queryClient";
 import { RequireAuth } from "./components/RequireAuth";
 import { Layout } from "./components/Layout";
+import { SignupPage } from "./pages/SignupPage";
+import { LoginPage } from "./pages/LoginPage";
 import "./index.css";
 
 const router = createBrowserRouter([
+  { path: "/signup", element: <SignupPage /> },
+  { path: "/login", element: <LoginPage /> },
   {
     element: (
       <RequireAuth>
