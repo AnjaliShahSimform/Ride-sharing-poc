@@ -39,47 +39,81 @@ export function PostRidePage() {
     }
   }
 
+  const inputClass =
+    "mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
+  const labelClass = "block text-sm font-medium text-gray-700";
+
   return (
-    <form onSubmit={handleSubmit}>
-      <h1>Post a ride</h1>
-      {error && <p role="alert">{error}</p>}
-      <label>
-        Origin label
-        <input value={originLabel} onChange={(e) => setOriginLabel(e.target.value)} required />
-      </label>
-      <label>
-        Origin latitude
-        <input value={originLat} onChange={(e) => setOriginLat(e.target.value)} required />
-      </label>
-      <label>
-        Origin longitude
-        <input value={originLng} onChange={(e) => setOriginLng(e.target.value)} required />
-      </label>
-      <label>
-        Destination label
-        <input value={destLabel} onChange={(e) => setDestLabel(e.target.value)} required />
-      </label>
-      <label>
-        Destination latitude
-        <input value={destLat} onChange={(e) => setDestLat(e.target.value)} required />
-      </label>
-      <label>
-        Destination longitude
-        <input value={destLng} onChange={(e) => setDestLng(e.target.value)} required />
-      </label>
-      <label>
-        Departure time
-        <input type="datetime-local" value={departureTime} onChange={(e) => setDepartureTime(e.target.value)} required />
-      </label>
-      <label>
-        Total seats
-        <input type="number" min="1" value={totalSeats} onChange={(e) => setTotalSeats(e.target.value)} required />
-      </label>
-      <label>
-        Estimated cost (₹)
-        <input value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} required />
-      </label>
-      <button type="submit">Post ride</button>
+    <form onSubmit={handleSubmit} className="rounded-xl bg-white p-8 shadow-sm">
+      <h1 className="mb-6 text-2xl font-semibold text-gray-900">Post a ride</h1>
+      {error && (
+        <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      <div className="space-y-4">
+        <label className={labelClass}>
+          Origin label
+          <input value={originLabel} onChange={(e) => setOriginLabel(e.target.value)} required className={inputClass} />
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <label className={labelClass}>
+            Origin latitude
+            <input value={originLat} onChange={(e) => setOriginLat(e.target.value)} required className={inputClass} />
+          </label>
+          <label className={labelClass}>
+            Origin longitude
+            <input value={originLng} onChange={(e) => setOriginLng(e.target.value)} required className={inputClass} />
+          </label>
+        </div>
+        <label className={labelClass}>
+          Destination label
+          <input value={destLabel} onChange={(e) => setDestLabel(e.target.value)} required className={inputClass} />
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <label className={labelClass}>
+            Destination latitude
+            <input value={destLat} onChange={(e) => setDestLat(e.target.value)} required className={inputClass} />
+          </label>
+          <label className={labelClass}>
+            Destination longitude
+            <input value={destLng} onChange={(e) => setDestLng(e.target.value)} required className={inputClass} />
+          </label>
+        </div>
+        <label className={labelClass}>
+          Departure time
+          <input
+            type="datetime-local"
+            value={departureTime}
+            onChange={(e) => setDepartureTime(e.target.value)}
+            required
+            className={inputClass}
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <label className={labelClass}>
+            Total seats
+            <input
+              type="number"
+              min="1"
+              value={totalSeats}
+              onChange={(e) => setTotalSeats(e.target.value)}
+              required
+              className={inputClass}
+            />
+          </label>
+          <label className={labelClass}>
+            Estimated cost (₹)
+            <input value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} required className={inputClass} />
+          </label>
+        </div>
+      </div>
+      <button
+        type="submit"
+        className="mt-6 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+      >
+        Post ride
+      </button>
     </form>
   );
 }

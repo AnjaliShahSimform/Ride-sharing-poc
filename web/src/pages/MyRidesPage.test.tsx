@@ -70,11 +70,7 @@ describe("MyRidesPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    await waitFor(() => {
-      expect(screen.getByText((content, element) => {
-        return element?.tagName === "LI" && content.includes("CANCELLED");
-      })).toBeInTheDocument();
-    });
+    expect(await screen.findByText("CANCELLED")).toBeInTheDocument();
     expect(apiFetchMock).toHaveBeenNthCalledWith(2, "/api/rides/ride-1/cancel", { method: "PATCH" });
   });
 });
