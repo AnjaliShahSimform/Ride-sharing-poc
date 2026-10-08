@@ -1344,3 +1344,115 @@ requests — plain `request(app)` doesn't retain cookies between calls.
 git add src/modules/auth/auth.service.ts src/modules/auth/auth.controller.ts src/modules/auth/auth.routes.ts tests/integration/auth.test.ts CLAUDE.md
 git commit -m "feat: add GET /api/auth/me and POST /api/auth/logout"
 ```
+
+---
+
+## Task 5: `GET /api/rides/mine`
+
+**Gap this task fixes:** the Rides module (built before this plan) never implemented `GET /api/rides/mine`, even though it's documented in the base design spec's §6 API surface table. The frontend's "my rides" page (Plan 2) genuinely needs it — `GET /api/rides/search`'s filters (`status: "SCHEDULED"`, `seatsAvailable: { gt: 0 }`) structurally exclude cancelled, completed, and fully-booked rides, so a driver could never see or manage exactly the rides they'd most want to act on via search. Added here because this plan already has the cookie-auth test infrastructure (`signupDriver`, `createRide`, the CSRF header constants) this task's tests build on directly.
+
+**Files:**
+- Modify: `src/modules/rides/rides.service.ts`
+- Modify: `src/modules/rides/rides.controller.ts`
+- Modify: `src/modules/rides/rides.routes.ts`
+- Modify: `tests/integration/rides.test.ts`
+- Modify: `CLAUDE.md`
+
+**Interfaces:**
+- Produces: `getMyRides(driverId: string): Promise<Ride[]>` from `src/modules/rides/rides.service.ts` — returns every ride for that driver regardless of status, newest-posted first. Plan 2's "my rides" page consumes `GET /api/rides/mine`'s JSON response (an array of the same ride shape `POST /api/rides` and `GET /api/rides/search` already return).
+
+- [ ] **Step 1: Write the failing test**
+
+Add this `describe` block to the end of `tests/integration/rides.test.ts` (after the `PATCH /api/rides/:id/complete` block):
+
+```ts
+describe("GET /api/rides/mine", () => {
+  it("returns only the authenticated driver's own rides, any status", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+    await agent.patch(`/api/rides/${rideId}/cancel`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+
+    const otherAgent = await signupDriver("someone-else@example.com");
+    await createRide(otherAgent);
+
+    const res = await agent.get("/api/rides/mine");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: rideId, status: "CANCELLED" });
+  });
+
+  it("rejects an unauthenticated request", async () => {
+    const res = await request(app).get("/api/rides/mine");
+    expect(res.status).toBe(401);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/integration/rides.test.ts`
+Expected: FAIL — `GET /api/rides/mine` doesn't exist yet, so Express's catch-all 404 handler responds `404` instead of `200`/`401`.
+
+- [ ] **Step 3: Add `getMyRides` to `rides.service.ts`**
+
+Add this function to `src/modules/rides/rides.service.ts`, after `searchRides`:
+
+```ts
+export async function getMyRides(driverId: string) {
+  return prisma.ride.findMany({
+    where: { driverId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+```
+
+- [ ] **Step 4: Add the handler to `rides.controller.ts`**
+
+Add this handler to `src/modules/rides/rides.controller.ts`, after `searchRidesHandler`:
+
+```ts
+export async function getMyRidesHandler(req: Request, res: Response) {
+  const rides = await ridesService.getMyRides(req.user!.sub);
+  res.status(200).json(rides);
+}
+```
+
+- [ ] **Step 5: Wire the route in `rides.routes.ts`**
+
+Add this line to `src/modules/rides/rides.routes.ts`, after the `/search` route and before the `/:id/cancel` route (import `getMyRidesHandler` alongside the other controller imports):
+
+```ts
+ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler));
+```
+
+- [ ] **Step 6: Run test to verify it passes**
+
+Run: `npx vitest run tests/integration/rides.test.ts`
+Expected: PASS (18 tests)
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `npm test`
+Expected: all tests PASS.
+
+- [ ] **Step 8: Update `CLAUDE.md`**
+
+In the "## Project" section, update this sentence:
+
+```
+The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete built, `GET /:id`, `GET /mine`, and the audit endpoint are not); Bookings and the `AuditLog` wiring have not been started.
+```
+
+to:
+
+```
+The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete/mine built, `GET /:id` and the audit endpoint are not); Bookings and the `AuditLog` wiring have not been started.
+```
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/modules/rides/rides.service.ts src/modules/rides/rides.controller.ts src/modules/rides/rides.routes.ts tests/integration/rides.test.ts CLAUDE.md
+git commit -m "feat: add GET /api/rides/mine"
+```
