@@ -1,13 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as api from "../lib/api";
 import { MyRidesPage } from "./MyRidesPage";
-
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
 
 function renderPage() {
   const queryClient = new QueryClient();
