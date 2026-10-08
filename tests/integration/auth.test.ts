@@ -26,6 +26,7 @@ describe("POST /api/auth/signup", () => {
     expect(res.status).toBe(201);
     expect(res.body.token).toBeUndefined();
     expect(res.headers["set-cookie"]?.[0]).toMatch(/^token=/);
+    expect(res.headers["set-cookie"]?.[0]).toMatch(/HttpOnly/);
     expect(res.body.user).toMatchObject({
       email: validSignup.email,
       name: validSignup.name,
@@ -153,5 +154,10 @@ describe("POST /api/auth/logout", () => {
   it("succeeds even with no existing session", async () => {
     const res = await request(app).post("/api/auth/logout").set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
     expect(res.status).toBe(200);
+  });
+
+  it("rejects a mutating request with no CSRF header", async () => {
+    const res = await request(app).post("/api/auth/logout");
+    expect(res.status).toBe(403);
   });
 });
