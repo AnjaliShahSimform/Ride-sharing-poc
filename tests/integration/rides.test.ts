@@ -218,3 +218,25 @@ describe("PATCH /api/rides/:id/complete", () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe("GET /api/rides/mine", () => {
+  it("returns only the authenticated driver's own rides, any status", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+    await agent.patch(`/api/rides/${rideId}/cancel`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+
+    const otherAgent = await signupDriver("someone-else@example.com");
+    await createRide(otherAgent);
+
+    const res = await agent.get("/api/rides/mine");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ id: rideId, status: "CANCELLED" });
+  });
+
+  it("rejects an unauthenticated request", async () => {
+    const res = await request(app).get("/api/rides/mine");
+    expect(res.status).toBe(401);
+  });
+});
