@@ -10,7 +10,7 @@ export function Layout() {
 
   async function handleLogout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
-    queryClient.setQueryData(["currentUser"], undefined);
+    queryClient.clear();
     navigate("/login");
   }
 

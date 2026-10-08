@@ -1,14 +1,14 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as api from "../lib/api";
 import * as useCurrentUserModule from "../hooks/useCurrentUser";
 import { Layout } from "./Layout";
 
 function renderLayout() {
   const queryClient = new QueryClient();
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/rides"]}>
         <Routes>
@@ -20,16 +20,10 @@ function renderLayout() {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 describe("Layout", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
   it("shows driver-only links for a user with the DRIVER role", () => {
     // @ts-expect-error -- partial mock, only the fields Layout reads
     vi.spyOn(useCurrentUserModule, "useCurrentUser").mockReturnValue({
@@ -61,10 +55,15 @@ describe("Layout", () => {
     });
     vi.spyOn(api, "apiFetch").mockResolvedValue({ message: "Logged out" });
 
-    renderLayout();
+    const { queryClient } = renderLayout();
+    queryClient.setQueryData(["currentUser"], {
+      user: { id: "1", name: "A", email: "a@example.com", phone: "1", roles: ["DRIVER", "RIDER"] },
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
 
     expect(await screen.findByText("Login page")).toBeInTheDocument();
     expect(api.apiFetch).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
+    expect(queryClient.getQueryData(["currentUser"])).toBeUndefined();
   });
 });
