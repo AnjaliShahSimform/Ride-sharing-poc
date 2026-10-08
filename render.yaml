@@ -27,3 +27,16 @@ services:
         value: 1d
       - key: LOG_LEVEL
         value: info
+  - type: web
+    name: ride-sharing-poc-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false # the deployed API service's URL
