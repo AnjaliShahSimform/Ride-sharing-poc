@@ -57,3 +57,11 @@ export async function login(input: LoginInput) {
   const token = signToken({ sub: user.id, roles: user.roles });
   return { user: toPublicUser(user), token };
 }
+
+export async function getById(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new UnauthenticatedError("User no longer exists");
+  }
+  return toPublicUser(user);
+}

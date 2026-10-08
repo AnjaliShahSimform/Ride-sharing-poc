@@ -15,6 +15,16 @@ const envSchema = z.object({
   // validates every env var referenced in schema.prisma's datasource block
   // (including directUrl) whenever PrismaClient is instantiated.
   DIRECT_URL: z.string().min(1, "DIRECT_URL is required"),
+  // .url() catches a missing/malformed value loudly at startup instead of
+  // CORS silently rejecting every credentialed request later. The
+  // .transform() strips exactly one trailing slash so a configured value
+  // with one (e.g. "https://example.com/") still matches the browser's
+  // Origin header, which never has a trailing slash.
+  FRONTEND_ORIGIN: z
+    .string()
+    .url()
+    .default("http://localhost:5173")
+    .transform((origin) => origin.replace(/\/$/, "")),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("1d"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),

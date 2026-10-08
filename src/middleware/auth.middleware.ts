@@ -1,15 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
-import { UnauthenticatedError, ForbiddenError } from "../lib/AppError";
+import { ForbiddenError, UnauthenticatedError } from "../lib/AppError";
+import { AUTH_COOKIE_NAME } from "../lib/authCookie";
 import { verifyToken } from "../lib/jwt";
 
 // Authentication: who are you? Every route but signup/login needs this.
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  const token = req.cookies?.[AUTH_COOKIE_NAME];
+  if (!token) {
     throw new UnauthenticatedError();
   }
-
-  const token = header.slice("Bearer ".length);
 
   try {
     req.user = verifyToken(token);

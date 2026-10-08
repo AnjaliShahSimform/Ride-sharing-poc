@@ -51,6 +51,13 @@ export async function searchRides(query: SearchRidesQuery) {
   });
 }
 
+export async function getMyRides(driverId: string) {
+  return prisma.ride.findMany({
+    where: { driverId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 // Ownership check (this specific record) lives here, in the service layer —
 // distinct from the requireRole RBAC middleware (this route at all). Only a
 // SCHEDULED ride can transition; once CANCELLED or COMPLETED it's locked, per

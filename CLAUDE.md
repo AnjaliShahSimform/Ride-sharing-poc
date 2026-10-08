@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete built, `GET /:id`, `GET /mine`, and the audit endpoint are not); Bookings and the `AuditLog` wiring have not been started.
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete/mine built, `GET /:id` and the audit endpoint are not); Bookings and the `AuditLog` wiring have not been started.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Each domain lives under `src/modules/<name>/` with four files following the same
 
 ### Three distinct authorization layers — don't conflate them
 
-1. **Authentication** (`requireAuth` in `src/middleware/auth.middleware.ts`) — verifies the JWT, populates `req.user` (`{ sub, roles }`).
+1. **Authentication** (`requireAuth` in `src/middleware/auth.middleware.ts`) — verifies the JWT read from the `token` httpOnly cookie (not an `Authorization` header — see "Cookie-based auth" below), populates `req.user` (`{ sub, roles }`).
 2. **RBAC / route authorization** (`requireRole(...)`, same file) — "can this *role* call this *route* at all?" Applied per-route.
 3. **Ownership / record authorization** — "can this *specific user* act on this *specific record*?" Lives inside the service layer (e.g. `rides.service.ts`'s `transitionRide` checks `ride.driverId !== driverId`), not in middleware, because it needs the record loaded first. This is what prevents IDOR (a rider hitting another user's resource by guessing its ID).
 
@@ -63,6 +63,42 @@ Each domain lives under `src/modules/<name>/` with four files following the same
 - `validateBody(schema)` / `validateQuery(schema)` (`src/middleware/validate.ts`) call `schema.parse(...)` synchronously; a `ZodError` throw is caught natively by Express without needing `asyncHandler`.
 - `src/middleware/errorHandler.ts` is the single place HTTP status codes get decided: `ZodError` → 400, any `AppError` subclass → its own `statusCode`, anything else → 500 (and logged, since it's unexpected). It must stay the last `app.use()` in `src/app.ts` — Express only routes to a 4-arg middleware after `next(err)`.
 - Add a new failure mode by adding an `AppError` subclass in `src/lib/AppError.ts`, not by special-casing it in the error handler.
+
+### Cookie-based auth, and why GET never needs a CSRF header
+
+The JWT lives only in an `httpOnly` cookie (`src/lib/authCookie.ts`'s
+`AUTH_COOKIE_NAME`), never in a response body — `GET /api/auth/me` is the
+only way to learn the current user, since JavaScript can't read the cookie
+itself. `secure`/`sameSite` differ by environment: production needs
+`sameSite: "none"` because the frontend and API deploy as separate Render
+services (different sites, not just different origins); local dev uses
+`sameSite: "lax"` since `localhost:5173` and `localhost:3000` differ only by
+port, which *is* same-site.
+
+`SameSite=None` alone gives no CSRF protection, so `requireCsrfHeader`
+(`src/middleware/csrf.ts`), applied globally, rejects any `POST`/`PATCH`/
+`PUT`/`DELETE` missing an `X-Requested-With: XMLHttpRequest` header — a
+plain cross-site HTML form can't set custom headers, so this blocks the
+classic CSRF vector. It never checks `GET`, since `GET` isn't mutating;
+full reasoning for this tradeoff vs. a token-based CSRF scheme is in
+[2026-10-08-frontend-cookie-auth-design.md](docs/superpowers/specs/2026-10-08-frontend-cookie-auth-design.md)
+§3.
+
+Integration tests use Supertest's `request.agent(app)` (not plain
+`request(app)`) wherever a cookie needs to persist across multiple
+requests — plain `request(app)` doesn't retain cookies between calls.
+
+CORS (`src/app.ts`) is locked to `env.FRONTEND_ORIGIN` with `credentials:
+true`; it must be set to the real deployed frontend's origin in production
+(`render.yaml` prompts for it, `sync: false`) or every credentialed
+cross-origin request from the actual frontend will silently fail CORS —
+the server starts fine either way, since the env var has a dev-only
+default, so a missing/wrong value doesn't surface as a startup error.
+
+`docker compose up`'s full-stack `app` service runs with `NODE_ENV:
+production` over plain `http://localhost:3000`, which means the
+`Secure; SameSite=None` cookie attributes get issued over HTTP — most
+browsers tolerate this for `localhost`, but Safari historically does not.
 
 ### Money and matching — two non-obvious data rules from the design spec
 

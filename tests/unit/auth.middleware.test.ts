@@ -5,23 +5,23 @@ import { signToken } from "../../src/lib/jwt";
 import { requireAuth, requireRole } from "../../src/middleware/auth.middleware";
 
 function fakeReq(overrides: Partial<Request> = {}): Request {
-  return { headers: {}, ...overrides } as Request;
+  return { cookies: {}, ...overrides } as Request;
 }
 
 describe("requireAuth", () => {
-  it("throws UnauthenticatedError when there is no Authorization header", () => {
+  it("throws UnauthenticatedError when there is no token cookie", () => {
     const req = fakeReq();
     expect(() => requireAuth(req, {} as Response, vi.fn())).toThrow(UnauthenticatedError);
   });
 
   it("throws UnauthenticatedError for a malformed token", () => {
-    const req = fakeReq({ headers: { authorization: "Bearer not-a-real-token" } });
+    const req = fakeReq({ cookies: { token: "not-a-real-token" } });
     expect(() => requireAuth(req, {} as Response, vi.fn())).toThrow(UnauthenticatedError);
   });
 
   it("attaches the decoded payload to req.user and calls next() for a valid token", () => {
     const token = signToken({ sub: "user-1", roles: ["DRIVER"] });
-    const req = fakeReq({ headers: { authorization: `Bearer ${token}` } });
+    const req = fakeReq({ cookies: { token } });
     const next = vi.fn();
 
     requireAuth(req, {} as Response, next);

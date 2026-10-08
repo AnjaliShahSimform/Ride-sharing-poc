@@ -8,8 +8,8 @@ The full design rationale — data model, the indexed matching query, and the ra
 
 ## Status
 
-- ✅ Auth (signup/login, JWT, RBAC)
-- 🟡 Rides — create, search, cancel, complete are built; `GET /:id`, `GET /mine`, and the audit endpoint are not yet
+- ✅ Auth (signup/login, cookie-based sessions, RBAC)
+- 🟡 Rides — create, search, cancel, complete, mine are built; `GET /:id` and the audit endpoint are not yet
 - ⬜ Bookings (the race-safe seat-booking module)
 - ⬜ Audit log wiring
 
@@ -42,14 +42,22 @@ docker compose up             # app + db, migrations run automatically on contai
 
 | Method & path | Access | Notes |
 |---|---|---|
-| `POST /api/auth/signup` | public | roles `[DRIVER, RIDER]`, returns JWT |
-| `POST /api/auth/login` | public | returns JWT |
+| `POST /api/auth/signup` | public | roles `[DRIVER, RIDER]`, sets an `httpOnly` auth cookie, returns `{ user }` |
+| `POST /api/auth/login` | public | sets an `httpOnly` auth cookie, returns `{ user }` |
+| `GET /api/auth/me` | authenticated | returns `{ user }` for the current session |
+| `POST /api/auth/logout` | public | clears the auth cookie; `200` even with no existing session |
 | `POST /api/rides` | `DRIVER` | rejects past `departureTime`, `totalSeats <= 0` |
 | `GET /api/rides/search` | authenticated | indexed bounding-box + time-window match |
+| `GET /api/rides/mine` | `DRIVER` | own posted rides, any status, newest first |
 | `PATCH /api/rides/:id/cancel` | `DRIVER` + ownership | |
 | `PATCH /api/rides/:id/complete` | `DRIVER` + ownership | locks the ride |
 
-All routes but signup/login require `Authorization: Bearer <jwt>`.
+Auth is cookie-based, not Bearer-token: signup/login set an `httpOnly` `token`
+cookie (sent automatically by the browser on subsequent requests), rather than
+returning a JWT in the response body. Every route but signup/login/logout
+requires that cookie. Mutating requests (`POST`/`PATCH`/`PUT`/`DELETE`) also
+require an `X-Requested-With: XMLHttpRequest` header (CSRF mitigation) —
+`GET` requests never need it.
 
 ## Deploying (free tier)
 

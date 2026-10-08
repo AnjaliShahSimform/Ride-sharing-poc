@@ -154,6 +154,7 @@ that ride, in the same transaction.
 ## 6. API surface
 
 All routes but signup/login require `Authorization: Bearer <jwt>`.
+(Superseded by [2026-10-08-frontend-cookie-auth-design.md](2026-10-08-frontend-cookie-auth-design.md) §4 — auth is now cookie-based, not Bearer-token.)
 
 | Method & path | Access | Notes |
 |---|---|---|
