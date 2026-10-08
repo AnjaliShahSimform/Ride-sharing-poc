@@ -24,13 +24,15 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
-app.use(requireCsrfHeader);
 app.use(
   pinoHttp({
     logger,
     genReqId: (req) => req.headers["x-request-id"]?.toString() ?? randomUUID(),
   }),
 );
+// Runs after the logger so a CSRF rejection is still captured in request
+// logs; must still run before both routers.
+app.use(requireCsrfHeader);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
