@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { randomUUID } from "node:crypto";
 import pinoHttp from "pino-http";
 import { errorHandler } from "./middleware/errorHandler";
+import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
 import { ridesRouter } from "./modules/rides/rides.routes";
 import { logger } from "./lib/logger";
@@ -11,7 +12,14 @@ import { logger } from "./lib/logger";
 export const app = express();
 
 app.use(helmet());
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      callback(null, origin === env.FRONTEND_ORIGIN);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(
   pinoHttp({

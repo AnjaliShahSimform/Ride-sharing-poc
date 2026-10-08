@@ -15,6 +15,7 @@ const envSchema = z.object({
   // validates every env var referenced in schema.prisma's datasource block
   // (including directUrl) whenever PrismaClient is instantiated.
   DIRECT_URL: z.string().min(1, "DIRECT_URL is required"),
+  FRONTEND_ORIGIN: z.string().min(1).default("http://localhost:5173"),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("1d"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
