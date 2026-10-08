@@ -120,3 +120,38 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("GET /api/auth/me", () => {
+  it("returns the current user for a valid session", async () => {
+    const agent = request.agent(app);
+    await agent.post("/api/auth/signup").set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(validSignup);
+
+    const res = await agent.get("/api/auth/me");
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ email: validSignup.email, name: validSignup.name });
+  });
+
+  it("returns 401 without a session", async () => {
+    const res = await request(app).get("/api/auth/me");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/auth/logout", () => {
+  it("clears the session so a subsequent /me call is unauthenticated", async () => {
+    const agent = request.agent(app);
+    await agent.post("/api/auth/signup").set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(validSignup);
+
+    const logoutRes = await agent.post("/api/auth/logout").set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+    expect(logoutRes.status).toBe(200);
+
+    const meRes = await agent.get("/api/auth/me");
+    expect(meRes.status).toBe(401);
+  });
+
+  it("succeeds even with no existing session", async () => {
+    const res = await request(app).post("/api/auth/logout").set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+    expect(res.status).toBe(200);
+  });
+});
