@@ -21,6 +21,22 @@ interface RequestOptions {
   body?: unknown;
 }
 
+// The backend's error handler (src/middleware/errorHandler.ts) sends a Zod
+// validation failure as { error: "ValidationError", details } with no
+// `message` field, where `details` is `err.flatten().fieldErrors` — a
+// Record<string, string[]> of per-field messages. Without this, apiFetch's
+// message ?? error fallback surfaces the literal string "ValidationError"
+// to the user instead of anything actionable.
+function messageFromDetails(details: unknown): string | undefined {
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
+  const messages = Object.values(details as Record<string, unknown>)
+    .flat()
+    .filter((value): value is string => typeof value === "string");
+  return messages.length > 0 ? messages.join(" ") : undefined;
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -38,7 +54,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const message = data?.message ?? data?.error ?? "Request failed";
+    const message = data?.message ?? messageFromDetails(data?.details) ?? data?.error ?? "Request failed";
     throw new ApiError(res.status, message);
   }
 
