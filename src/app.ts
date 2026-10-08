@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -20,6 +21,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(cookieParser());
 app.use(express.json());
 app.use(
   pinoHttp({

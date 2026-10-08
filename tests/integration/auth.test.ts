@@ -1,11 +1,11 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/app";
+import { env } from "../../src/config/env";
 import { prisma } from "../../src/lib/prisma";
 import { resetDb } from "./testDb";
+import ms from "ms";
 
-// Scoped to this integration suite only — pure unit tests elsewhere have no
-// business touching a database, so this cleanup must not be global.
 beforeEach(resetDb);
 
 const validSignup = {
@@ -16,11 +16,12 @@ const validSignup = {
 };
 
 describe("POST /api/auth/signup", () => {
-  it("creates a user and returns a token", async () => {
+  it("creates a user and sets an auth cookie", async () => {
     const res = await request(app).post("/api/auth/signup").send(validSignup);
 
     expect(res.status).toBe(201);
-    expect(res.body.token).toEqual(expect.any(String));
+    expect(res.body.token).toBeUndefined();
+    expect(res.headers["set-cookie"]?.[0]).toMatch(/^token=/);
     expect(res.body.user).toMatchObject({
       email: validSignup.email,
       name: validSignup.name,
@@ -61,7 +62,7 @@ describe("POST /api/auth/signup", () => {
 });
 
 describe("POST /api/auth/login", () => {
-  it("returns a token for correct credentials", async () => {
+  it("sets an auth cookie for correct credentials", async () => {
     await request(app).post("/api/auth/signup").send(validSignup);
 
     const res = await request(app)
@@ -69,7 +70,20 @@ describe("POST /api/auth/login", () => {
       .send({ email: validSignup.email, password: validSignup.password });
 
     expect(res.status).toBe(200);
-    expect(res.body.token).toEqual(expect.any(String));
+    expect(res.body.token).toBeUndefined();
+    expect(res.headers["set-cookie"]?.[0]).toMatch(/^token=/);
+  });
+
+  it("sets the cookie's Max-Age to match JWT_EXPIRES_IN", async () => {
+    await request(app).post("/api/auth/signup").send(validSignup);
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: validSignup.email, password: validSignup.password });
+
+    const setCookie = res.headers["set-cookie"]?.[0] ?? "";
+    const expectedSeconds = Math.floor(ms(env.JWT_EXPIRES_IN) / 1000);
+    expect(setCookie).toMatch(new RegExp(`Max-Age=${expectedSeconds}`));
   });
 
   it("rejects a wrong password with 401", async () => {
