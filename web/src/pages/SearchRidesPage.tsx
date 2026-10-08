@@ -35,6 +35,31 @@ const emptySearch: SearchParams = {
 export function SearchRidesPage() {
   const [form, setForm] = useState<SearchParams>(emptySearch);
   const [submitted, setSubmitted] = useState<SearchParams | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  function useCurrentLocation() {
+    setGeoError(null);
+    if (!navigator.geolocation) {
+      setGeoError("Your browser doesn't support location access.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setForm((f) => ({
+          ...f,
+          originLat: String(position.coords.latitude),
+          originLng: String(position.coords.longitude),
+        }));
+        setLocating(false);
+      },
+      () => {
+        setGeoError("Couldn't get your location. Enter it manually below.");
+        setLocating(false);
+      },
+    );
+  }
 
   const { data, isLoading, isError, error } = useQuery<RideResult[]>({
     queryKey: ["rides", "search", submitted],
@@ -69,15 +94,26 @@ export function SearchRidesPage() {
       <h1 className="mb-6 text-2xl font-semibold text-gray-900">Search rides</h1>
       <form onSubmit={handleSubmit} className="rounded-xl bg-white p-8 shadow-sm">
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <label className={labelClass}>
-              Origin latitude
-              <input value={form.originLat} onChange={updateField("originLat")} required className={inputClass} />
-            </label>
-            <label className={labelClass}>
-              Origin longitude
-              <input value={form.originLng} onChange={updateField("originLng")} required className={inputClass} />
-            </label>
+          <div>
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={locating}
+              className="mb-2 text-sm font-medium text-blue-600 hover:underline disabled:text-gray-400"
+            >
+              {locating ? "Locating..." : "Use my current location"}
+            </button>
+            {geoError && <p className="mb-2 text-sm text-red-600">{geoError}</p>}
+            <div className="grid grid-cols-2 gap-4">
+              <label className={labelClass}>
+                Origin latitude
+                <input value={form.originLat} onChange={updateField("originLat")} required className={inputClass} />
+              </label>
+              <label className={labelClass}>
+                Origin longitude
+                <input value={form.originLng} onChange={updateField("originLng")} required className={inputClass} />
+              </label>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <label className={labelClass}>

@@ -13,7 +13,29 @@ export function PostRidePage() {
   const [totalSeats, setTotalSeats] = useState("1");
   const [estimatedCost, setEstimatedCost] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   const navigate = useNavigate();
+
+  function useCurrentLocation() {
+    setGeoError(null);
+    if (!navigator.geolocation) {
+      setGeoError("Your browser doesn't support location access.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setOriginLat(String(position.coords.latitude));
+        setOriginLng(String(position.coords.longitude));
+        setLocating(false);
+      },
+      () => {
+        setGeoError("Couldn't get your location. Enter it manually below.");
+        setLocating(false);
+      },
+    );
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -56,15 +78,26 @@ export function PostRidePage() {
           Origin label
           <input value={originLabel} onChange={(e) => setOriginLabel(e.target.value)} required className={inputClass} />
         </label>
-        <div className="grid grid-cols-2 gap-4">
-          <label className={labelClass}>
-            Origin latitude
-            <input value={originLat} onChange={(e) => setOriginLat(e.target.value)} required className={inputClass} />
-          </label>
-          <label className={labelClass}>
-            Origin longitude
-            <input value={originLng} onChange={(e) => setOriginLng(e.target.value)} required className={inputClass} />
-          </label>
+        <div>
+          <button
+            type="button"
+            onClick={useCurrentLocation}
+            disabled={locating}
+            className="mb-2 text-sm font-medium text-blue-600 hover:underline disabled:text-gray-400"
+          >
+            {locating ? "Locating..." : "Use my current location"}
+          </button>
+          {geoError && <p className="mb-2 text-sm text-red-600">{geoError}</p>}
+          <div className="grid grid-cols-2 gap-4">
+            <label className={labelClass}>
+              Origin latitude
+              <input value={originLat} onChange={(e) => setOriginLat(e.target.value)} required className={inputClass} />
+            </label>
+            <label className={labelClass}>
+              Origin longitude
+              <input value={originLng} onChange={(e) => setOriginLng(e.target.value)} required className={inputClass} />
+            </label>
+          </div>
         </div>
         <label className={labelClass}>
           Destination label
