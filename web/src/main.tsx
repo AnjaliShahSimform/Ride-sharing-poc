@@ -1,12 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
 import { queryClient } from "./lib/queryClient";
 import { RequireAuth } from "./components/RequireAuth";
 import { Layout } from "./components/Layout";
 import { SignupPage } from "./pages/SignupPage";
 import { LoginPage } from "./pages/LoginPage";
+import { SearchRidesPage } from "./pages/SearchRidesPage";
 import "./index.css";
 
 const router = createBrowserRouter([
@@ -18,7 +19,10 @@ const router = createBrowserRouter([
         <Layout />
       </RequireAuth>
     ),
-    children: [{ path: "/", element: <p>Welcome!</p> }],
+    children: [
+      { path: "/", element: <Navigate to="/rides" replace /> },
+      { path: "/rides", element: <SearchRidesPage /> },
+    ],
   },
 ]);
 
