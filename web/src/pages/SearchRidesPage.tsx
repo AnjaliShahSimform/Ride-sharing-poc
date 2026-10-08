@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ApiError } from "../lib/api";
 
 interface RideResult {
   id: string;
@@ -36,15 +36,24 @@ export function SearchRidesPage() {
   const [form, setForm] = useState<SearchParams>(emptySearch);
   const [submitted, setSubmitted] = useState<SearchParams | null>(null);
 
-  const { data, isLoading, isError } = useQuery<RideResult[]>({
+  const { data, isLoading, isError, error } = useQuery<RideResult[]>({
     queryKey: ["rides", "search", submitted],
     queryFn: () => apiFetch(`/api/rides/search?${new URLSearchParams(submitted as unknown as Record<string, string>).toString()}`),
     enabled: submitted !== null,
+    retry: false,
   });
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setSubmitted(form);
+    // The backend parses these as UTC, so the raw datetime-local value (which
+    // has no timezone of its own) must be converted to a UTC ISO string here
+    // the same way PostRidePage does — otherwise a non-UTC user's search
+    // window is silently shifted by their timezone offset.
+    setSubmitted({
+      ...form,
+      earliestDeparture: new Date(form.earliestDeparture).toISOString(),
+      latestDeparture: new Date(form.latestDeparture).toISOString(),
+    });
   }
 
   function updateField(field: keyof SearchParams) {
@@ -92,7 +101,7 @@ export function SearchRidesPage() {
       </form>
 
       {isLoading && <p>Searching...</p>}
-      {isError && <p role="alert">Search failed</p>}
+      {isError && <p role="alert">{error instanceof ApiError ? error.message : "Search failed"}</p>}
       {data && data.length === 0 && <p>No rides match your search.</p>}
       {data && data.length > 0 && (
         <ul>

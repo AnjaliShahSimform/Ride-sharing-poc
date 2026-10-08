@@ -1,13 +1,8 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as api from "../lib/api";
 import { SearchRidesPage } from "./SearchRidesPage";
-
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
 
 function renderPage() {
   const queryClient = new QueryClient();
@@ -55,5 +50,32 @@ describe("SearchRidesPage", () => {
     fillAndSubmit();
 
     expect(await screen.findByText("No rides match your search.")).toBeInTheDocument();
+  });
+
+  it("converts the departure time inputs to UTC ISO strings before sending them to the backend", async () => {
+    const apiFetchMock = vi.spyOn(api, "apiFetch").mockResolvedValue([]);
+
+    renderPage();
+    fillAndSubmit();
+
+    await screen.findByText("No rides match your search.");
+
+    const calledPath = apiFetchMock.mock.calls[0][0] as string;
+    const params = new URLSearchParams(calledPath.split("?")[1]);
+    const earliestDeparture = params.get("earliestDeparture");
+    const latestDeparture = params.get("latestDeparture");
+
+    expect(earliestDeparture).toBe(new Date("2027-01-01T00:00").toISOString());
+    expect(latestDeparture).toBe(new Date("2027-01-01T12:00").toISOString());
+  });
+
+  it("shows the actual error message when the search request fails", async () => {
+    const { ApiError } = api;
+    vi.spyOn(api, "apiFetch").mockRejectedValue(new ApiError(400, "radiusKm must be positive"));
+
+    renderPage();
+    fillAndSubmit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("radiusKm must be positive");
   });
 });
