@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete built, `GET /:id`, `GET /mine`, and the audit endpoint are not); Bookings and the `AuditLog` wiring have not been started.
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete/mine built, `GET /:id` and the audit endpoint are not); the frontend (`web/`) is complete for everything the backend currently supports; Bookings and the `AuditLog` wiring have not been started.
 
 ## Commands
 
@@ -24,6 +24,10 @@ docker compose up -d db   # start Postgres only, for local `npm run dev` / tests
 docker compose up         # full stack (app + db) as it runs in production
 
 npx tsc -p tsconfig.json --noEmit  # type-check without emitting
+
+cd web && npm run dev    # frontend dev server (Vite, localhost:5173)
+cd web && npm test        # frontend test suite (Vitest + React Testing Library)
+cd web && npm run build   # frontend production build
 ```
 
 `npm run lint` is defined in package.json but there is no `eslint.config.*` in the repo yet, so it currently fails with "couldn't find configuration file" — set one up before relying on it.

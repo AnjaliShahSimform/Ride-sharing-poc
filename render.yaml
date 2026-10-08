@@ -25,3 +25,14 @@ services:
         value: 1d
       - key: LOG_LEVEL
         value: info
+      - key: FRONTEND_ORIGIN
+        sync: false # the deployed static site's URL
+  - type: web
+    name: ride-sharing-poc-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false # the deployed API service's URL

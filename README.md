@@ -9,7 +9,8 @@ The full design rationale — data model, the indexed matching query, and the ra
 ## Status
 
 - ✅ Auth (signup/login, JWT, RBAC)
-- 🟡 Rides — create, search, cancel, complete are built; `GET /:id`, `GET /mine`, and the audit endpoint are not yet
+- 🟡 Rides — create, search, cancel, complete, mine are built; `GET /:id` and the audit endpoint are not yet
+- ✅ Frontend (`web/`) — signup/login, search rides, post a ride, manage your own rides
 - ⬜ Bookings (the race-safe seat-booking module)
 - ⬜ Audit log wiring
 
@@ -73,3 +74,13 @@ This repo includes `render.yaml`, so Render can provision the service from a Blu
 4. Deploy. Render builds the existing `Dockerfile`, then runs `npx prisma migrate deploy` before starting the server, so the schema is applied automatically on first boot (and again, harmlessly, on every subsequent cold start).
 
 **Free-tier tradeoff to expect:** Render's free web services spin down after 15 minutes of inactivity and cold-start (a few seconds' delay) on the next request. Fine for a demo/POC; not for anything latency-sensitive.
+
+### 3. Frontend — Render Static Site
+
+Also defined in `render.yaml` (`ride-sharing-poc-web`), deployed from the same Blueprint:
+
+1. Set `VITE_API_URL` on the static site service to the API service's deployed URL (e.g. `https://ride-sharing-poc.onrender.com`).
+2. Set `FRONTEND_ORIGIN` on the **API** service to the static site's deployed URL (e.g. `https://ride-sharing-poc-web.onrender.com`) — the backend's CORS config rejects any other origin.
+3. Deploy. Render builds `web/` with `npm install && npm run build` and serves `web/dist` from a CDN — no cold-start/spin-down, unlike the free web service.
+
+**Local development:** `cd web && npm install && npm run dev` (Vite's dev server runs on `http://localhost:5173` by default, which matches the backend's `FRONTEND_ORIGIN` default — no extra config needed).
