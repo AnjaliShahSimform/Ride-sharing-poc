@@ -76,14 +76,20 @@ export async function cancelBooking(actorId: string, bookingId: string) {
     if (booking.riderId !== actorId && booking.ride.driverId !== actorId) {
       throw new ForbiddenError("Only the rider or the ride's driver can cancel this booking");
     }
-    if (booking.status !== BookingStatus.CONFIRMED) {
-      throw new ConflictError("Booking is already cancelled");
-    }
 
-    const cancelled = await tx.booking.update({
-      where: { id: bookingId },
+    // Conditional UPDATE, not a plain update: re-checks status under the same
+    // row lock that performs the write, so two concurrent cancels for the
+    // same booking can't both pass an earlier unlocked read and both
+    // increment seatsAvailable. Mirrors the fix applied to bookSeat (see
+    // commit fa38549).
+    const result = await tx.booking.updateMany({
+      where: { id: bookingId, status: BookingStatus.CONFIRMED },
       data: { status: BookingStatus.CANCELLED, cancelledAt: new Date() },
     });
+    if (result.count === 0) {
+      throw new ConflictError("Booking is already cancelled");
+    }
+    const cancelled = await tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
 
     await tx.ride.update({
       where: { id: booking.rideId },
