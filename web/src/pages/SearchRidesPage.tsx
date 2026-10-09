@@ -1,7 +1,8 @@
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { LocationPicker, type LocationValue } from "../components/LocationPicker";
 
 interface RideResult {
   id: string;
@@ -13,7 +14,7 @@ interface RideResult {
   estimatedCost: string;
 }
 
-interface SearchParams {
+interface SubmittedParams {
   originLat: string;
   originLng: string;
   destLat: string;
@@ -23,19 +24,15 @@ interface SearchParams {
   radiusKm: string;
 }
 
-const emptySearch: SearchParams = {
-  originLat: "",
-  originLng: "",
-  destLat: "",
-  destLng: "",
-  earliestDeparture: "",
-  latestDeparture: "",
-  radiusKm: "10",
-};
+const emptyLocation: LocationValue = { label: "", lat: "", lng: "" };
 
 export function SearchRidesPage() {
-  const [form, setForm] = useState<SearchParams>(emptySearch);
-  const [submitted, setSubmitted] = useState<SearchParams | null>(null);
+  const [origin, setOrigin] = useState<LocationValue>(emptyLocation);
+  const [dest, setDest] = useState<LocationValue>(emptyLocation);
+  const [date, setDate] = useState("");
+  const [radiusKm, setRadiusKm] = useState("10");
+  const [submitted, setSubmitted] = useState<SubmittedParams | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
 
@@ -73,15 +70,11 @@ export function SearchRidesPage() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setForm((f) => ({
-          ...f,
-          originLat: String(position.coords.latitude),
-          originLng: String(position.coords.longitude),
-        }));
+        setOrigin({ label: "Current location", lat: String(position.coords.latitude), lng: String(position.coords.longitude) });
         setLocating(false);
       },
       () => {
-        setGeoError("Couldn't get your location. Enter it manually below.");
+        setGeoError("Couldn't get your location. Search for it below.");
         setLocating(false);
       },
     );
@@ -96,19 +89,23 @@ export function SearchRidesPage() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    // The backend parses these as UTC, so the raw datetime-local value (which
-    // has no timezone of its own) must be converted to a UTC ISO string here
-    // the same way PostRidePage does — otherwise a non-UTC user's search
-    // window is silently shifted by their timezone offset.
+    setFormError(null);
+    if (!origin.lat || !origin.lng || !dest.lat || !dest.lng) {
+      setFormError("Select a location from the dropdown for both origin and destination.");
+      return;
+    }
+    // A single calendar date, expanded to its full local day (midnight to
+    // midnight) and converted to UTC — the backend still takes an exact
+    // earliest/latest departure range, it's just always a whole day now.
     setSubmitted({
-      ...form,
-      earliestDeparture: new Date(form.earliestDeparture).toISOString(),
-      latestDeparture: new Date(form.latestDeparture).toISOString(),
+      originLat: origin.lat,
+      originLng: origin.lng,
+      destLat: dest.lat,
+      destLng: dest.lng,
+      radiusKm,
+      earliestDeparture: new Date(`${date}T00:00:00`).toISOString(),
+      latestDeparture: new Date(`${date}T23:59:59.999`).toISOString(),
     });
-  }
-
-  function updateField(field: keyof SearchParams) {
-    return (e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, [field]: e.target.value });
   }
 
   const inputClass =
@@ -119,6 +116,11 @@ export function SearchRidesPage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-gray-900">Search rides</h1>
       <form onSubmit={handleSubmit} className="rounded-xl bg-white p-8 shadow-sm">
+        {formError && (
+          <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            {formError}
+          </p>
+        )}
         <div className="space-y-4">
           <div>
             <button
@@ -130,52 +132,16 @@ export function SearchRidesPage() {
               {locating ? "Locating..." : "Use my current location"}
             </button>
             {geoError && <p className="mb-2 text-sm text-red-600">{geoError}</p>}
-            <div className="grid grid-cols-2 gap-4">
-              <label className={labelClass}>
-                Origin latitude
-                <input value={form.originLat} onChange={updateField("originLat")} required className={inputClass} />
-              </label>
-              <label className={labelClass}>
-                Origin longitude
-                <input value={form.originLng} onChange={updateField("originLng")} required className={inputClass} />
-              </label>
-            </div>
+            <LocationPicker label="Origin" labelValue={origin.label} latValue={origin.lat} lngValue={origin.lng} onChange={setOrigin} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <label className={labelClass}>
-              Destination latitude
-              <input value={form.destLat} onChange={updateField("destLat")} required className={inputClass} />
-            </label>
-            <label className={labelClass}>
-              Destination longitude
-              <input value={form.destLng} onChange={updateField("destLng")} required className={inputClass} />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <label className={labelClass}>
-              Earliest departure
-              <input
-                type="datetime-local"
-                value={form.earliestDeparture}
-                onChange={updateField("earliestDeparture")}
-                required
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Latest departure
-              <input
-                type="datetime-local"
-                value={form.latestDeparture}
-                onChange={updateField("latestDeparture")}
-                required
-                className={inputClass}
-              />
-            </label>
-          </div>
+          <LocationPicker label="Destination" labelValue={dest.label} latValue={dest.lat} lngValue={dest.lng} onChange={setDest} />
+          <label className={labelClass}>
+            Travel date
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputClass} />
+          </label>
           <label className={labelClass}>
             Search radius (km)
-            <input value={form.radiusKm} onChange={updateField("radiusKm")} required className={inputClass} />
+            <input value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} required className={inputClass} />
           </label>
         </div>
         <button

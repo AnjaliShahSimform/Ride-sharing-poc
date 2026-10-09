@@ -1,14 +1,13 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
+import { LocationPicker, type LocationValue } from "../components/LocationPicker";
+
+const emptyLocation: LocationValue = { label: "", lat: "", lng: "" };
 
 export function PostRidePage() {
-  const [originLabel, setOriginLabel] = useState("");
-  const [originLat, setOriginLat] = useState("");
-  const [originLng, setOriginLng] = useState("");
-  const [destLabel, setDestLabel] = useState("");
-  const [destLat, setDestLat] = useState("");
-  const [destLng, setDestLng] = useState("");
+  const [origin, setOrigin] = useState<LocationValue>(emptyLocation);
+  const [dest, setDest] = useState<LocationValue>(emptyLocation);
   const [departureTime, setDepartureTime] = useState("");
   const [totalSeats, setTotalSeats] = useState("1");
   const [estimatedCost, setEstimatedCost] = useState("");
@@ -26,12 +25,11 @@ export function PostRidePage() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setOriginLat(String(position.coords.latitude));
-        setOriginLng(String(position.coords.longitude));
+        setOrigin({ label: "Current location", lat: String(position.coords.latitude), lng: String(position.coords.longitude) });
         setLocating(false);
       },
       () => {
-        setGeoError("Couldn't get your location. Enter it manually below.");
+        setGeoError("Couldn't get your location. Search for it below.");
         setLocating(false);
       },
     );
@@ -40,16 +38,20 @@ export function PostRidePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!origin.lat || !origin.lng || !dest.lat || !dest.lng) {
+      setError("Select a location from the dropdown for both origin and destination.");
+      return;
+    }
     try {
       await apiFetch("/api/rides", {
         method: "POST",
         body: {
-          originLabel,
-          originLat: Number(originLat),
-          originLng: Number(originLng),
-          destLabel,
-          destLat: Number(destLat),
-          destLng: Number(destLng),
+          originLabel: origin.label,
+          originLat: Number(origin.lat),
+          originLng: Number(origin.lng),
+          destLabel: dest.label,
+          destLat: Number(dest.lat),
+          destLng: Number(dest.lng),
           departureTime: new Date(departureTime).toISOString(),
           totalSeats: Number(totalSeats),
           estimatedCost,
@@ -74,10 +76,6 @@ export function PostRidePage() {
         </p>
       )}
       <div className="space-y-4">
-        <label className={labelClass}>
-          Origin label
-          <input value={originLabel} onChange={(e) => setOriginLabel(e.target.value)} required className={inputClass} />
-        </label>
         <div>
           <button
             type="button"
@@ -88,31 +86,9 @@ export function PostRidePage() {
             {locating ? "Locating..." : "Use my current location"}
           </button>
           {geoError && <p className="mb-2 text-sm text-red-600">{geoError}</p>}
-          <div className="grid grid-cols-2 gap-4">
-            <label className={labelClass}>
-              Origin latitude
-              <input value={originLat} onChange={(e) => setOriginLat(e.target.value)} required className={inputClass} />
-            </label>
-            <label className={labelClass}>
-              Origin longitude
-              <input value={originLng} onChange={(e) => setOriginLng(e.target.value)} required className={inputClass} />
-            </label>
-          </div>
+          <LocationPicker label="Origin" labelValue={origin.label} latValue={origin.lat} lngValue={origin.lng} onChange={setOrigin} />
         </div>
-        <label className={labelClass}>
-          Destination label
-          <input value={destLabel} onChange={(e) => setDestLabel(e.target.value)} required className={inputClass} />
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          <label className={labelClass}>
-            Destination latitude
-            <input value={destLat} onChange={(e) => setDestLat(e.target.value)} required className={inputClass} />
-          </label>
-          <label className={labelClass}>
-            Destination longitude
-            <input value={destLng} onChange={(e) => setDestLng(e.target.value)} required className={inputClass} />
-          </label>
-        </div>
+        <LocationPicker label="Destination" labelValue={dest.label} latValue={dest.lat} lngValue={dest.lng} onChange={setDest} />
         <label className={labelClass}>
           Departure time
           <input
