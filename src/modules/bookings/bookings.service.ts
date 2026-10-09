@@ -1,5 +1,5 @@
 import { BookingStatus, Prisma } from "@prisma/client";
-import { ConflictError, NotFoundError } from "../../lib/AppError";
+import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
 
@@ -65,4 +65,82 @@ export async function bookSeat(rideId: string, riderId: string) {
 
     return share ? { ...booking, costShare: share } : booking;
   });
+}
+
+export async function cancelBooking(actorId: string, bookingId: string) {
+  return prisma.$transaction(async (tx) => {
+    const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { ride: true } });
+    if (!booking) {
+      throw new NotFoundError("Booking not found");
+    }
+    if (booking.riderId !== actorId && booking.ride.driverId !== actorId) {
+      throw new ForbiddenError("Only the rider or the ride's driver can cancel this booking");
+    }
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      throw new ConflictError("Booking is already cancelled");
+    }
+
+    const cancelled = await tx.booking.update({
+      where: { id: bookingId },
+      data: { status: BookingStatus.CANCELLED, cancelledAt: new Date() },
+    });
+
+    await tx.ride.update({
+      where: { id: booking.rideId },
+      data: { seatsAvailable: { increment: 1 } },
+    });
+
+    await recalculateShares(tx, booking.rideId, booking.ride.estimatedCost);
+    await writeAuditLog(tx, "Booking", bookingId, "CANCELLED", actorId, { rideId: booking.rideId });
+
+    return cancelled;
+  });
+}
+
+export async function getMyBookings(riderId: string) {
+  const bookings = await prisma.booking.findMany({
+    where: { riderId },
+    include: { ride: { include: { driver: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return bookings.map((b) => ({
+    id: b.id,
+    rideId: b.rideId,
+    status: b.status,
+    costShare: b.costShare,
+    createdAt: b.createdAt,
+    ride: {
+      originLabel: b.ride.originLabel,
+      destLabel: b.ride.destLabel,
+      departureTime: b.ride.departureTime,
+      status: b.ride.status,
+    },
+    driverContact:
+      b.status === BookingStatus.CONFIRMED ? { name: b.ride.driver.name, phone: b.ride.driver.phone } : null,
+  }));
+}
+
+export async function getRideBookings(driverId: string, rideId: string) {
+  const ride = await prisma.ride.findUnique({ where: { id: rideId } });
+  if (!ride) {
+    throw new NotFoundError("Ride not found");
+  }
+  if (ride.driverId !== driverId) {
+    throw new ForbiddenError("Only the driver who posted this ride can view its bookings");
+  }
+
+  const bookings = await prisma.booking.findMany({
+    where: { rideId },
+    include: { rider: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return bookings.map((b) => ({
+    id: b.id,
+    status: b.status,
+    costShare: b.costShare,
+    createdAt: b.createdAt,
+    riderContact: b.status === BookingStatus.CONFIRMED ? { name: b.rider.name, phone: b.rider.phone } : null,
+  }));
 }

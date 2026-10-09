@@ -1,10 +1,10 @@
 import { Router } from "express";
+import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth } from "../../middleware/auth.middleware";
+import { cancelBookingHandler, getMyBookingsHandler } from "./bookings.controller";
 
 export const bookingsRouter = Router();
 
 bookingsRouter.use(requireAuth);
-
-// Intentionally empty for now — GET /mine and PATCH /:id/cancel are added in
-// Task 3. This file exists from Task 2 onward so app.ts's mount point is
-// stable across tasks.
+bookingsRouter.get("/mine", asyncHandler(getMyBookingsHandler));
+bookingsRouter.patch("/:id/cancel", asyncHandler(cancelBookingHandler));
