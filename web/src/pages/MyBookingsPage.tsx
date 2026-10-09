@@ -77,7 +77,7 @@ export function MyBookingsPage() {
                 Driver: {booking.driverContact.name} · {booking.driverContact.phone}
               </p>
             )}
-            {booking.status === "CONFIRMED" && (
+            {booking.status === "CONFIRMED" && booking.ride.status === "SCHEDULED" && (
               <div className="mt-3">
                 <button
                   onClick={() => handleCancel(booking.id)}

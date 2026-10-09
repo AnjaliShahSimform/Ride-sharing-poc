@@ -43,14 +43,24 @@ export function SearchRidesPage() {
   const { data: currentUser } = useCurrentUser();
   const isRider = currentUser?.user.roles.includes("RIDER") ?? false;
   const [bookError, setBookError] = useState<string | null>(null);
+  const [bookSuccess, setBookSuccess] = useState<string | null>(null);
+  const [bookingInProgress, setBookingInProgress] = useState<string | null>(null);
 
   async function handleBook(rideId: string) {
+    if (bookingInProgress) {
+      return;
+    }
     setBookError(null);
+    setBookSuccess(null);
+    setBookingInProgress(rideId);
     try {
-      await apiFetch(`/api/rides/${rideId}/bookings`, { method: "POST" });
+      const booking = await apiFetch<{ costShare: string }>(`/api/rides/${rideId}/bookings`, { method: "POST" });
       await queryClient.invalidateQueries({ queryKey: ["rides", "search"] });
+      setBookSuccess(`Booked! Your share: ₹${booking.costShare}`);
     } catch (err) {
       setBookError(err instanceof ApiError ? err.message : "Something went wrong");
+    } finally {
+      setBookingInProgress(null);
     }
   }
 
@@ -191,6 +201,9 @@ export function SearchRidesPage() {
                 {bookError}
               </p>
             )}
+            {bookSuccess && (
+              <p className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{bookSuccess}</p>
+            )}
             <ul className="space-y-3">
               {data.map((ride) => (
                 <li key={ride.id} className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm">
@@ -206,9 +219,10 @@ export function SearchRidesPage() {
                   {isRider && (
                     <button
                       onClick={() => handleBook(ride.id)}
-                      className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                      disabled={bookingInProgress === ride.id}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                     >
-                      Book
+                      {bookingInProgress === ride.id ? "Booking..." : "Book"}
                     </button>
                   )}
                 </li>
