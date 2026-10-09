@@ -77,6 +77,23 @@ export async function cancelBooking(actorId: string, bookingId: string) {
       throw new ForbiddenError("Only the rider or the ride's driver can cancel this booking");
     }
 
+    // Lock the Ride row first, then the Booking row — the same order
+    // bookSeat and transitionRide already take, so two transactions that
+    // both touch a Ride and its Bookings can never wait on each other in
+    // opposite orders (classic deadlock setup). The conditional UPDATE here
+    // re-checks the ride is still SCHEDULED under that row lock: a
+    // CANCELLED/COMPLETED ride can't have a seat "returned" to it, which is
+    // also what stops a rider from cancelling a booking on a ride that's
+    // already been completed. Mirrors the fix applied to bookSeat (commit
+    // fa38549) and transitionRide (commit 4b730db).
+    const rideResult = await tx.ride.updateMany({
+      where: { id: booking.rideId, status: "SCHEDULED" },
+      data: { seatsAvailable: { increment: 1 } },
+    });
+    if (rideResult.count === 0) {
+      throw new ConflictError("Ride is no longer open");
+    }
+
     // Conditional UPDATE, not a plain update: re-checks status under the same
     // row lock that performs the write, so two concurrent cancels for the
     // same booking can't both pass an earlier unlocked read and both
@@ -90,11 +107,6 @@ export async function cancelBooking(actorId: string, bookingId: string) {
       throw new ConflictError("Booking is already cancelled");
     }
     const cancelled = await tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
-
-    await tx.ride.update({
-      where: { id: booking.rideId },
-      data: { seatsAvailable: { increment: 1 } },
-    });
 
     await recalculateShares(tx, booking.rideId, booking.ride.estimatedCost);
     await writeAuditLog(tx, "Booking", bookingId, "CANCELLED", actorId, { rideId: booking.rideId });
