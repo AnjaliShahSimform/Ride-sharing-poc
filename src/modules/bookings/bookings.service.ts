@@ -44,7 +44,7 @@ export async function bookSeat(rideId: string, riderId: string) {
     }
 
     const result = await tx.ride.updateMany({
-      where: { id: rideId, seatsAvailable: { gt: 0 } },
+      where: { id: rideId, status: "SCHEDULED", seatsAvailable: { gt: 0 } },
       data: { seatsAvailable: { decrement: 1 } },
     });
     if (result.count === 0) {
