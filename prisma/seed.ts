@@ -30,6 +30,10 @@ async function main() {
   await upsertUser("sam.rider@example.com", "Sam Rider", "9000000004", [Role.RIDER]);
   await upsertUser("neha.rider@example.com", "Neha Rider", "9000000007", [Role.RIDER]);
   await upsertUser("arjun.rider@example.com", "Arjun Rider", "9000000008", [Role.RIDER]);
+  // ADMIN has no self-service signup path (auth.schemas.ts's signupSchema
+  // only accepts DRIVER/RIDER) — this is the one place an admin account
+  // gets created, same password as every other seeded user.
+  await upsertUser("admin@example.com", "Admin", "9000000009", [Role.ADMIN]);
 
   const seededDriverIds = [dara.id, ravi.id, priya.id, kiran.id];
 
@@ -231,6 +235,7 @@ async function main() {
   console.log("Seed complete.");
   console.log("  Drivers: dara.driver@example.com / ravi.driver@example.com / priya.driver@example.com / kiran.driver@example.com");
   console.log("  Riders:  rina.rider@example.com / sam.rider@example.com / neha.rider@example.com / arjun.rider@example.com");
+  console.log("  Admin:   admin@example.com");
   console.log(`  Password for all: ${SEED_PASSWORD}`);
 }
 

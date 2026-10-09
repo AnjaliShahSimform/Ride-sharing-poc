@@ -13,6 +13,7 @@ The full design rationale — data model, the indexed matching query, and the ra
 - ✅ Frontend (`web/`) — signup/login, search rides, post a ride, manage your own rides
 - ✅ Bookings — race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match
 - ✅ Audit log wiring
+- ✅ Admin — read-only view over all users, all rides, and the audit log (no self-service signup; account is seeded or created directly in the database)
 
 ## Running locally
 
@@ -56,6 +57,9 @@ docker compose up             # app + db, migrations run automatically on contai
 | `GET /api/bookings/mine` | `RIDER` | own bookings, any status; driver contact included only when `CONFIRMED` |
 | `PATCH /api/bookings/:id/cancel` | rider (own) or driver (ride's owner) | returns the seat to availability, recalculates remaining riders' cost shares |
 | `GET /api/rides/:id/bookings` | `DRIVER` + ownership | riders on this ride; rider contact included only when `CONFIRMED` |
+| `GET /api/admin/users` | `ADMIN` | every user, never includes `passwordHash` |
+| `GET /api/admin/rides` | `ADMIN` | every ride from every driver, any status |
+| `GET /api/admin/audit-logs` | `ADMIN` | paginated (`?page=&pageSize=`), newest first |
 
 Auth is cookie-based, not Bearer-token: signup/login set an `httpOnly` `token`
 cookie (sent automatically by the browser on subsequent requests), rather than

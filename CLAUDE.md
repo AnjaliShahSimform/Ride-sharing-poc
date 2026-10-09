@@ -4,7 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports.
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports. The `ADMIN` role, previously schema-only, is now wired to a read-only `src/modules/admin/` module (see "Admin module" below).
+
+### Admin module
+
+`ADMIN` has no self-service signup path — `auth.schemas.ts`'s `signupSchema` only
+accepts `DRIVER`/`RIDER`. The one admin account is created directly (the seed
+script's `admin@example.com` / `password123`, or a manual `prisma.user.create`
+in production), then logs in through the ordinary `/api/auth/login` endpoint
+like anyone else. `src/modules/admin/` is read-only and `requireRole("ADMIN")`-gated
+on every route: `GET /api/admin/users` (no `passwordHash`), `GET /api/admin/rides`
+(every ride, any driver, any status, with a nested `driver` object), and
+`GET /api/admin/audit-logs?page=&pageSize=` (the same `AuditLog` table written by
+Bookings/Rides, paginated newest-first — no filtering by entity yet). On the
+frontend, `Layout.tsx` shows the "Users" / "All rides" / "Audit log" nav links
+only when `roles` includes `ADMIN`, and both `/` and post-login redirect an
+admin-only account straight to `/admin/users` instead of the rider/driver
+default of `/rides`.
 
 ## Commands
 

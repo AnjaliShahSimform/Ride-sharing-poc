@@ -16,6 +16,7 @@ export function Layout() {
 
   const isDriver = data?.user.roles.includes("DRIVER") ?? false;
   const isRider = data?.user.roles.includes("RIDER") ?? false;
+  const isAdmin = data?.user.roles.includes("ADMIN") ?? false;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -39,6 +40,19 @@ export function Layout() {
             <Link to="/bookings/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
               My bookings
             </Link>
+          )}
+          {isAdmin && (
+            <>
+              <Link to="/admin/users" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+                Users
+              </Link>
+              <Link to="/admin/rides" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+                All rides
+              </Link>
+              <Link to="/admin/audit-logs" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+                Audit log
+              </Link>
+            </>
           )}
           <button
             onClick={handleLogout}

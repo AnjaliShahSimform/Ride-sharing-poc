@@ -14,9 +14,13 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     try {
-      await apiFetch("/api/auth/login", { method: "POST", body: { email, password } });
+      const { user } = await apiFetch<{ user: { roles?: string[] } }>("/api/auth/login", {
+        method: "POST",
+        body: { email, password },
+      });
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      navigate("/rides");
+      const isAdminOnly = user.roles?.length === 1 && user.roles[0] === "ADMIN";
+      navigate(isAdminOnly ? "/admin/users" : "/rides");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     }
