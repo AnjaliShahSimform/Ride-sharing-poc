@@ -24,6 +24,11 @@ enum RideStatus {
   CANCELLED
 }
 
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
 model User {
   id            String   @id @default(uuid())
   name          String
@@ -32,6 +37,7 @@ model User {
   passwordHash  String
   roles         Role[]
   ridesAsDriver Ride[]
+  bookings      Booking[]
   createdAt     DateTime @default(now())
 }
 
@@ -51,8 +57,36 @@ model Ride {
   estimatedCost  Decimal    @db.Decimal(10, 2)
   status         RideStatus @default(SCHEDULED)
   createdAt      DateTime   @default(now())
+  bookings       Booking[]
 
   @@index([departureTime])
   @@index([originLat, originLng])
   @@index([destLat, destLng])
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  rideId      String
+  ride        Ride          @relation(fields: [rideId], references: [id])
+  riderId     String
+  rider       User          @relation(fields: [riderId], references: [id])
+  status      BookingStatus @default(CONFIRMED)
+  costShare   Decimal       @db.Decimal(10, 2)
+  createdAt   DateTime      @default(now())
+  cancelledAt DateTime?
+
+  @@index([rideId])
+  @@index([riderId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  action     String
+  actorId    String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
 }

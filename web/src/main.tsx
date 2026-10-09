@@ -10,6 +10,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { SearchRidesPage } from "./pages/SearchRidesPage";
 import { PostRidePage } from "./pages/PostRidePage";
 import { MyRidesPage } from "./pages/MyRidesPage";
+import { MyBookingsPage } from "./pages/MyBookingsPage";
 import "./index.css";
 
 const router = createBrowserRouter([
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: "/rides", element: <SearchRidesPage /> },
       { path: "/rides/new", element: <PostRidePage /> },
       { path: "/rides/mine", element: <MyRidesPage /> },
+      { path: "/bookings/mine", element: <MyBookingsPage /> },
     ],
   },
 ]);

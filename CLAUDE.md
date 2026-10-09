@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is partially complete (create/search/cancel/complete/mine built, `GET /:id` and the audit endpoint are not); the frontend (`web/`) is complete for everything the backend currently supports; Bookings and the `AuditLog` wiring have not been started.
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports.
 
 ## Commands
 
@@ -108,10 +108,46 @@ browsers tolerate this for `localhost`, but Safari historically does not.
 
 - **Money is always `Decimal`, never `Float`**, end-to-end: `estimatedCost` is validated in `rides.schemas.ts` as a regex-checked *string* (`/^\d+(\.\d{1,2})?$/`), not coerced to a JS number, so it never passes through float arithmetic before reaching Prisma's `@db.Decimal(10, 2)` column.
 - **Matching is a real indexed query, not an in-memory filter.** `rides.service.ts`'s `searchRides` converts a search radius (km) into a lat/lng bounding box (`KM_PER_DEGREE_LAT = 111`, longitude delta scaled by `cos(latitude)`) and ANDs it with an indexed `departureTime` range — see the `@@index` declarations on `Ride` in `prisma/schema.prisma`. The design doc's §4 documents the PostGIS (`ST_DWithin` + GiST index) upgrade path for when bounding-box approximation stops being good enough; that migration is additive, not a redesign.
-- The last-seat booking concurrency guarantee (design spec §5 — a single atomic conditional `UPDATE ... WHERE seatsAvailable > 0`, inside a transaction) is designed but not yet implemented; there is no `Booking` model in `prisma/schema.prisma` yet.
+- The last-seat booking concurrency guarantee (design spec §5) is implemented, via the `Booking` model in `prisma/schema.prisma` — see "Bookings and the audit trail" below for how.
+
+### Bookings and the audit trail
+
+`src/modules/bookings/`'s `bookSeat`, `cancelBooking`, and
+`rides.service.ts`'s `transitionRide` are the three places in this codebase
+where a genuine race condition is possible, and all three handle it the same
+way: a conditional `updateMany` that re-checks a precondition under the same
+row lock that performs the write, rather than trusting an earlier unlocked
+read. `bookSeat`'s version is `UPDATE "Ride" SET "seatsAvailable" =
+"seatsAvailable" - 1 WHERE id = ? AND status = 'SCHEDULED' AND
+"seatsAvailable" > 0`, inside the same transaction as the `Booking` insert.
+Postgres's row lock on that `UPDATE` is what makes two concurrent requests
+for the last seat resolve to exactly one winner — there is no explicit
+`SELECT ... FOR UPDATE` or app-level mutex anywhere in this path, and there
+doesn't need to be. All three functions that touch both a `Ride` and its
+`Booking`s take their locks in the same order — `Ride` first, then
+`Booking` — to avoid a cross-transaction deadlock from opposite lock
+ordering. See
+[2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md)
+§5 for the two alternative approaches considered and why they weren't chosen.
+
+`Booking.costShare` is recalculated — for every `CONFIRMED` booking on a
+ride, not just the one that changed — inside the same transaction as any
+booking creation or cancellation, via `bookings.service.ts`'s
+`recalculateShares`. Driver/rider contact info (`name`, `phone`) is returned
+only alongside a `CONFIRMED` booking, only from `GET /api/bookings/mine` and
+`GET /api/rides/:id/bookings` — `GET /api/rides/search` never selects
+contact fields at all, so "excluded during search" is enforced at the query,
+not by filtering a response afterward.
+
+Every state-changing operation (ride created/cancelled/completed, booking
+created/cancelled, cost recalculated) writes one `AuditLog` row
+(`src/lib/auditLog.ts`'s `writeAuditLog`) inside the same transaction as the
+change itself — never as a separate, unguarded write that could drift out of
+sync with what actually happened.
 
 ### Testing
 
 - Integration tests (`tests/integration/*.test.ts`) hit a **real** Postgres via Supertest against the actual `app` — no mocking the database. Unit tests (`tests/unit/*.test.ts`) must never touch it.
 - `vitest.config.ts` sets `fileParallelism: false` because all integration test files share one database. Each integration file must clean up via the shared `resetDb()` helper in `tests/integration/testDb.ts`, which deletes rows in FK-safe order (children before parents) — extend that helper, not each test file's own `beforeEach`, whenever a new table gets a foreign key, or you'll get a cross-suite foreign-key-violation failure that only reproduces when the full suite runs in a particular order.
 - This codebase follows strict TDD: a failing test is written and run first, then the minimal implementation, then refactor. Follow the same discipline for new endpoints.
+- Exception: the Booking module deliberately skips this discipline — no automated tests were written for it beyond the one required concurrency test in `bookSeat`. This was a scoped, explicit decision for this module, not an oversight; see the Global Constraints section of [2026-10-09-booking-module.md](docs/superpowers/plans/2026-10-09-booking-module.md) for the reasoning.

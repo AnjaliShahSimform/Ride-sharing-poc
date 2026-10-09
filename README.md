@@ -9,10 +9,10 @@ The full design rationale — data model, the indexed matching query, and the ra
 ## Status
 
 - ✅ Auth (signup/login, cookie-based sessions, RBAC)
-- 🟡 Rides — create, search, cancel, complete, mine are built; `GET /:id` and the audit endpoint are not yet
+- 🟡 Rides — create, search, cancel, complete, mine are built; `GET /:id` is not yet
 - ✅ Frontend (`web/`) — signup/login, search rides, post a ride, manage your own rides
-- ⬜ Bookings (the race-safe seat-booking module)
-- ⬜ Audit log wiring
+- ✅ Bookings — race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match
+- ✅ Audit log wiring
 
 ## Running locally
 
@@ -52,6 +52,10 @@ docker compose up             # app + db, migrations run automatically on contai
 | `GET /api/rides/mine` | `DRIVER` | own posted rides, any status, newest first |
 | `PATCH /api/rides/:id/cancel` | `DRIVER` + ownership | |
 | `PATCH /api/rides/:id/complete` | `DRIVER` + ownership | locks the ride |
+| `POST /api/rides/:id/bookings` | `RIDER` | race-safe seat reservation; `409` if no seats left or ride isn't scheduled |
+| `GET /api/bookings/mine` | `RIDER` | own bookings, any status; driver contact included only when `CONFIRMED` |
+| `PATCH /api/bookings/:id/cancel` | rider (own) or driver (ride's owner) | returns the seat to availability, recalculates remaining riders' cost shares |
+| `GET /api/rides/:id/bookings` | `DRIVER` + ownership | riders on this ride; rider contact included only when `CONFIRMED` |
 
 Auth is cookie-based, not Bearer-token: signup/login set an `httpOnly` `token`
 cookie (sent automatically by the browser on subsequent requests), rather than

@@ -8,6 +8,7 @@ import { requireCsrfHeader } from "./middleware/csrf";
 import { errorHandler } from "./middleware/errorHandler";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
+import { bookingsRouter } from "./modules/bookings/bookings.routes";
 import { ridesRouter } from "./modules/rides/rides.routes";
 import { logger } from "./lib/logger";
 
@@ -40,6 +41,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/rides", ridesRouter);
+app.use("/api/bookings", bookingsRouter);
 
 // No route matched anything above this line.
 app.use((req, res) => {
