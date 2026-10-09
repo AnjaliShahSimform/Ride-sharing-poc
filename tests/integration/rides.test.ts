@@ -18,6 +18,7 @@ async function signupDriver(email = "dara@example.com"): Promise<Agent> {
       email,
       phone: "9999999999",
       password: "correct-horse",
+      role: "DRIVER",
     });
   return agent;
 }
