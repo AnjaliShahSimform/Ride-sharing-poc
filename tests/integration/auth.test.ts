@@ -14,6 +14,7 @@ const validSignup = {
   email: "anjali@example.com",
   phone: "9999999999",
   password: "correct-horse",
+  role: "RIDER",
 };
 
 describe("POST /api/auth/signup", () => {
@@ -30,7 +31,7 @@ describe("POST /api/auth/signup", () => {
     expect(res.body.user).toMatchObject({
       email: validSignup.email,
       name: validSignup.name,
-      roles: expect.arrayContaining(["DRIVER", "RIDER"]),
+      roles: ["RIDER"],
     });
   });
 
