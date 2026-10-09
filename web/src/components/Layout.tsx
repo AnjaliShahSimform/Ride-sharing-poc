@@ -15,6 +15,7 @@ export function Layout() {
   }
 
   const isDriver = data?.user.roles.includes("DRIVER") ?? false;
+  const isRider = data?.user.roles.includes("RIDER") ?? false;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -32,6 +33,11 @@ export function Layout() {
           {isDriver && (
             <Link to="/rides/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
               My rides
+            </Link>
+          )}
+          {isRider && (
+            <Link to="/bookings/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+              My bookings
             </Link>
           )}
           <button

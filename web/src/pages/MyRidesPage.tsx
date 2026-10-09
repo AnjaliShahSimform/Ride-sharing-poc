@@ -12,6 +12,13 @@ interface MyRide {
   seatsAvailable: number;
 }
 
+interface RideBooking {
+  id: string;
+  status: "CONFIRMED" | "CANCELLED";
+  costShare: string;
+  riderContact: { name: string; phone: string } | null;
+}
+
 export function MyRidesPage() {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -82,9 +89,33 @@ export function MyRidesPage() {
                 </button>
               </div>
             )}
+            <RideBookings rideId={ride.id} />
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+function RideBookings({ rideId }: { rideId: string }) {
+  const { data } = useQuery<RideBooking[]>({
+    queryKey: ["rides", rideId, "bookings"],
+    queryFn: () => apiFetch(`/api/rides/${rideId}/bookings`),
+  });
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3">
+      {data.map((b) => (
+        <li key={b.id} className="text-sm text-gray-600">
+          {b.status === "CONFIRMED" && b.riderContact
+            ? `${b.riderContact.name} · ${b.riderContact.phone} · ₹${b.costShare}`
+            : `Booking ${b.status.toLowerCase()}`}
+        </li>
+      ))}
+    </ul>
   );
 }

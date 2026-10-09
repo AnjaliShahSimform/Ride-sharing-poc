@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 
 interface RideResult {
   id: string;
@@ -37,6 +38,21 @@ export function SearchRidesPage() {
   const [submitted, setSubmitted] = useState<SearchParams | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+
+  const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
+  const isRider = currentUser?.user.roles.includes("RIDER") ?? false;
+  const [bookError, setBookError] = useState<string | null>(null);
+
+  async function handleBook(rideId: string) {
+    setBookError(null);
+    try {
+      await apiFetch(`/api/rides/${rideId}/bookings`, { method: "POST" });
+      await queryClient.invalidateQueries({ queryKey: ["rides", "search"] });
+    } catch (err) {
+      setBookError(err instanceof ApiError ? err.message : "Something went wrong");
+    }
+  }
 
   function useCurrentLocation() {
     setGeoError(null);
@@ -169,19 +185,36 @@ export function SearchRidesPage() {
         )}
         {data && data.length === 0 && <p className="text-sm text-gray-500">No rides match your search.</p>}
         {data && data.length > 0 && (
-          <ul className="space-y-3">
-            {data.map((ride) => (
-              <li key={ride.id} className="rounded-xl bg-white p-4 shadow-sm">
-                <p className="font-medium text-gray-900">
-                  {ride.originLabel} → {ride.destLabel}
-                </p>
-                <p className="mt-1 text-sm text-gray-500">
-                  {new Date(ride.departureTime).toLocaleString()} · {ride.seatsAvailable}/{ride.totalSeats} seats · ₹
-                  {ride.estimatedCost}
-                </p>
-              </li>
-            ))}
-          </ul>
+          <>
+            {bookError && (
+              <p role="alert" className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {bookError}
+              </p>
+            )}
+            <ul className="space-y-3">
+              {data.map((ride) => (
+                <li key={ride.id} className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {ride.originLabel} → {ride.destLabel}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {new Date(ride.departureTime).toLocaleString()} · {ride.seatsAvailable}/{ride.totalSeats} seats · ₹
+                      {ride.estimatedCost}
+                    </p>
+                  </div>
+                  {isRider && (
+                    <button
+                      onClick={() => handleBook(ride.id)}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      Book
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </div>
