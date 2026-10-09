@@ -1,5 +1,6 @@
-import { RideStatus } from "@prisma/client";
+import { BookingStatus, RideStatus } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
+import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
 import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 
@@ -9,22 +10,26 @@ import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 const KM_PER_DEGREE_LAT = 111;
 
 export async function createRide(driverId: string, input: CreateRideInput) {
-  return prisma.ride.create({
-    data: {
-      driverId,
-      originLat: input.originLat,
-      originLng: input.originLng,
-      destLat: input.destLat,
-      destLng: input.destLng,
-      originLabel: input.originLabel,
-      destLabel: input.destLabel,
-      departureTime: input.departureTime,
-      totalSeats: input.totalSeats,
-      // Booking's atomic decrement (design spec §5) mutates this counter;
-      // totalSeats itself never changes after creation.
-      seatsAvailable: input.totalSeats,
-      estimatedCost: input.estimatedCost,
-    },
+  return prisma.$transaction(async (tx) => {
+    const ride = await tx.ride.create({
+      data: {
+        driverId,
+        originLat: input.originLat,
+        originLng: input.originLng,
+        destLat: input.destLat,
+        destLng: input.destLng,
+        originLabel: input.originLabel,
+        destLabel: input.destLabel,
+        departureTime: input.departureTime,
+        totalSeats: input.totalSeats,
+        // Booking's atomic decrement (design spec §5) mutates this counter;
+        // totalSeats itself never changes after creation.
+        seatsAvailable: input.totalSeats,
+        estimatedCost: input.estimatedCost,
+      },
+    });
+    await writeAuditLog(tx, "Ride", ride.id, "CREATED", driverId);
+    return ride;
   });
 }
 
@@ -63,18 +68,53 @@ export async function getMyRides(driverId: string) {
 // SCHEDULED ride can transition; once CANCELLED or COMPLETED it's locked, per
 // design spec §6.
 async function transitionRide(driverId: string, rideId: string, toStatus: RideStatus) {
-  const ride = await prisma.ride.findUnique({ where: { id: rideId } });
-  if (!ride) {
-    throw new NotFoundError("Ride not found");
-  }
-  if (ride.driverId !== driverId) {
-    throw new ForbiddenError("Only the driver who posted this ride can modify it");
-  }
-  if (ride.status !== RideStatus.SCHEDULED) {
-    throw new ConflictError(`Ride is already ${ride.status.toLowerCase()}`);
-  }
+  return prisma.$transaction(async (tx) => {
+    const ride = await tx.ride.findUnique({ where: { id: rideId } });
+    if (!ride) {
+      throw new NotFoundError("Ride not found");
+    }
+    if (ride.driverId !== driverId) {
+      throw new ForbiddenError("Only the driver who posted this ride can modify it");
+    }
+    if (ride.status !== RideStatus.SCHEDULED) {
+      throw new ConflictError(`Ride is already ${ride.status.toLowerCase()}`);
+    }
 
-  return prisma.ride.update({ where: { id: rideId }, data: { status: toStatus } });
+    // Conditional UPDATE, not a plain update: re-checks status under the same
+    // row lock that performs the write, so two concurrent transitions on the
+    // same ride (e.g. cancel racing complete from two tabs) can't both pass
+    // the earlier unlocked read above and both proceed. Mirrors the fix
+    // applied to bookSeat/cancelBooking (see commits fa38549, 6176142).
+    const result = await tx.ride.updateMany({
+      where: { id: rideId, status: RideStatus.SCHEDULED },
+      data: { status: toStatus },
+    });
+    if (result.count === 0) {
+      // The pre-check above confirmed `ride.status` was SCHEDULED just before
+      // this write — a race changed it in between, so re-fetch rather than
+      // report the now-stale "scheduled" status back in the error message.
+      const current = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
+      throw new ConflictError(`Ride is already ${current.status.toLowerCase()}`);
+    }
+    const updated = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
+
+    if (toStatus === RideStatus.CANCELLED) {
+      const cascaded = await tx.booking.findMany({ where: { rideId, status: BookingStatus.CONFIRMED } });
+      if (cascaded.length > 0) {
+        await tx.booking.updateMany({
+          where: { rideId, status: BookingStatus.CONFIRMED },
+          data: { status: BookingStatus.CANCELLED, cancelledAt: new Date() },
+        });
+      }
+      await writeAuditLog(tx, "Ride", rideId, "CANCELLED", driverId, {
+        cascadedBookingIds: cascaded.map((b) => b.id),
+      });
+    } else {
+      await writeAuditLog(tx, "Ride", rideId, toStatus, driverId);
+    }
+
+    return updated;
+  });
 }
 
 export function cancelRide(driverId: string, rideId: string) {
