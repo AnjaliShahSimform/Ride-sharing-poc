@@ -24,7 +24,7 @@ npm run prisma:migrate        # applies migrations
 npm run dev                   # http://localhost:3000
 ```
 
-Health check: `GET /health`.
+Health check: `GET /health`. Interactive API docs (Swagger UI, generated from the route code): `GET /api-docs`.
 
 ### Tests
 

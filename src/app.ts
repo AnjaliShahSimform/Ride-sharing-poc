@@ -4,9 +4,11 @@ import express from "express";
 import helmet from "helmet";
 import { randomUUID } from "node:crypto";
 import pinoHttp from "pino-http";
+import swaggerUi from "swagger-ui-express";
 import { requireCsrfHeader } from "./middleware/csrf";
 import { errorHandler } from "./middleware/errorHandler";
 import { env } from "./config/env";
+import { swaggerSpec } from "./config/swagger";
 import { authRouter } from "./modules/auth/auth.routes";
 import { bookingsRouter } from "./modules/bookings/bookings.routes";
 import { ridesRouter } from "./modules/rides/rides.routes";
@@ -38,6 +40,20 @@ app.use(requireCsrfHeader);
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// Swagger UI's inline bundle-init script and styles need a relaxed CSP —
+// helmet's global default (script-src 'self', style-src 'self') would
+// otherwise silently block the page from rendering. Scoped to this one
+// route only; every other route keeps helmet's strict default.
+app.use(
+  "/api-docs",
+  (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+    res.removeHeader("Content-Security-Policy");
+    next();
+  },
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec),
+);
 
 app.use("/api/auth", authRouter);
 app.use("/api/rides", ridesRouter);
