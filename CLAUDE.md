@@ -133,20 +133,25 @@ browsers tolerate this for `localhost`, but Safari historically does not.
 ### Bookings and the audit trail
 
 `src/modules/bookings/`'s `bookSeat`, `cancelBooking`, and
-`rides.service.ts`'s `transitionRide` are the three places in this codebase
-where a genuine race condition is possible, and all three handle it the same
-way: a conditional `updateMany` that re-checks a precondition under the same
-row lock that performs the write, rather than trusting an earlier unlocked
-read. `bookSeat`'s version is `UPDATE "Ride" SET "seatsAvailable" =
-"seatsAvailable" - 1 WHERE id = ? AND status = 'SCHEDULED' AND
-"seatsAvailable" > 0`, inside the same transaction as the `Booking` insert.
-Postgres's row lock on that `UPDATE` is what makes two concurrent requests
-for the last seat resolve to exactly one winner — there is no explicit
-`SELECT ... FOR UPDATE` or app-level mutex anywhere in this path, and there
-doesn't need to be. All three functions that touch both a `Ride` and its
-`Booking`s take their locks in the same order — `Ride` first, then
-`Booking` — to avoid a cross-transaction deadlock from opposite lock
-ordering. See
+`rides.service.ts`'s `transitionRide` and `editRide` are the four places in
+this codebase where a genuine race condition is possible, and all four
+handle it the same way: a conditional `updateMany` that re-checks a
+precondition under the same row lock that performs the write, rather than
+trusting an earlier unlocked read. `bookSeat`'s version is `UPDATE "Ride" SET
+"seatsAvailable" = "seatsAvailable" - 1 WHERE id = ? AND status = 'SCHEDULED'
+AND "seatsAvailable" > 0`, inside the same transaction as the `Booking`
+insert. Postgres's row lock on that `UPDATE` is what makes two concurrent
+requests for the last seat resolve to exactly one winner — there is no
+explicit `SELECT ... FOR UPDATE` or app-level mutex anywhere in this path,
+and there doesn't need to be. `editRide` uses the same conditional
+`updateMany` (preconditioned on `status = 'SCHEDULED'`) to take the Ride
+row lock *before* checking for `CONFIRMED` bookings — a confirmed booking
+found after that check throws, which rolls back the whole transaction
+including the tentative field update, so a concurrent `bookSeat` can't slip
+a new booking in between the check and the write. All four functions that
+touch both a `Ride` and its `Booking`s take their locks in the same order —
+`Ride` first, then `Booking` — to avoid a cross-transaction deadlock from
+opposite lock ordering. See
 [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md)
 §5 for the two alternative approaches considered and why they weren't chosen.
 

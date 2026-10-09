@@ -63,6 +63,61 @@ export async function getMyRides(driverId: string) {
   });
 }
 
+// Editing is blocked once any CONFIRMED booking exists — a rider who already
+// has a seat shouldn't have the route/time silently change under them. The
+// driver's only path then is cancel (which cascades their bookings) + repost.
+//
+// Same race class as bookSeat/transitionRide: a concurrent booking could slip
+// in between an unlocked "any confirmed bookings?" read and the write. Closed
+// the same way — the conditional updateMany takes the Ride row lock *before*
+// the confirmed-booking check, so a concurrent bookSeat blocks on this row
+// until this transaction commits or rolls back, instead of racing it.
+export async function editRide(driverId: string, rideId: string, input: CreateRideInput) {
+  return prisma.$transaction(async (tx) => {
+    const ride = await tx.ride.findUnique({ where: { id: rideId } });
+    if (!ride) {
+      throw new NotFoundError("Ride not found");
+    }
+    if (ride.driverId !== driverId) {
+      throw new ForbiddenError("Only the driver who posted this ride can modify it");
+    }
+    if (ride.status !== RideStatus.SCHEDULED) {
+      throw new ConflictError(`Ride is already ${ride.status.toLowerCase()}`);
+    }
+
+    const result = await tx.ride.updateMany({
+      where: { id: rideId, status: RideStatus.SCHEDULED },
+      data: {
+        originLat: input.originLat,
+        originLng: input.originLng,
+        destLat: input.destLat,
+        destLng: input.destLng,
+        originLabel: input.originLabel,
+        destLabel: input.destLabel,
+        departureTime: input.departureTime,
+        totalSeats: input.totalSeats,
+        // Safe to reset outright: if a confirmed booking turns up below, this
+        // whole transaction — including this write — rolls back.
+        seatsAvailable: input.totalSeats,
+        estimatedCost: input.estimatedCost,
+      },
+    });
+    if (result.count === 0) {
+      const current = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
+      throw new ConflictError(`Ride is already ${current.status.toLowerCase()}`);
+    }
+
+    const confirmedCount = await tx.booking.count({ where: { rideId, status: BookingStatus.CONFIRMED } });
+    if (confirmedCount > 0) {
+      throw new ConflictError("Cannot edit a ride with confirmed bookings — cancel and repost instead");
+    }
+
+    const updated = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
+    await writeAuditLog(tx, "Ride", rideId, "UPDATED", driverId);
+    return updated;
+  });
+}
+
 // Ownership check (this specific record) lives here, in the service layer —
 // distinct from the requireRole RBAC middleware (this route at all). Only a
 // SCHEDULED ride can transition; once CANCELLED or COMPLETED it's locked, per

@@ -3,7 +3,14 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
 import { validateBody, validateQuery } from "../../middleware/validate";
 import { createBookingHandler, getRideBookingsHandler } from "../bookings/bookings.controller";
-import { cancelRideHandler, completeRideHandler, createRideHandler, getMyRidesHandler, searchRidesHandler } from "./rides.controller";
+import {
+  cancelRideHandler,
+  completeRideHandler,
+  createRideHandler,
+  editRideHandler,
+  getMyRidesHandler,
+  searchRidesHandler,
+} from "./rides.controller";
 import { createRideSchema, searchRidesQuerySchema } from "./rides.schemas";
 
 export const ridesRouter = Router();
@@ -101,6 +108,41 @@ ridesRouter.get("/search", validateQuery(searchRidesQuerySchema), asyncHandler(s
  *       403: { description: Caller isn't a DRIVER, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler));
+
+/**
+ * @swagger
+ * /api/rides/{id}:
+ *   patch:
+ *     summary: Edit a ride's details (driver, own ride only)
+ *     description: Blocked once the ride has any CONFIRMED booking (409) — a rider who already has a seat shouldn't have the route/time change under them. Cancel and repost instead. Same request body as POST /api/rides; seatsAvailable is reset to the new totalSeats.
+ *     tags: [Rides]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost]
+ *             properties:
+ *               originLat: { type: number, minimum: -90, maximum: 90 }
+ *               originLng: { type: number, minimum: -180, maximum: 180 }
+ *               destLat: { type: number, minimum: -90, maximum: 90 }
+ *               destLng: { type: number, minimum: -180, maximum: 180 }
+ *               originLabel: { type: string }
+ *               destLabel: { type: string }
+ *               departureTime: { type: string, format: date-time, description: "Must be in the future" }
+ *               totalSeats: { type: integer, minimum: 1 }
+ *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$' }
+ *     responses:
+ *       200: { description: Ride updated, content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
+ *       400: { description: "Bad input (past departureTime, totalSeats <= 0)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Ride is no longer SCHEDULED, or has a confirmed booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+ridesRouter.patch("/:id", requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(editRideHandler));
 
 /**
  * @swagger

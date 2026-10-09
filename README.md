@@ -51,6 +51,7 @@ docker compose up             # app + db, migrations run automatically on contai
 | `POST /api/rides` | `DRIVER` | rejects past `departureTime`, `totalSeats <= 0` |
 | `GET /api/rides/search` | authenticated | indexed bounding-box + time-window match |
 | `GET /api/rides/mine` | `DRIVER` | own posted rides, any status, newest first |
+| `PATCH /api/rides/:id` | `DRIVER` + ownership | edits route/time/seats/cost; `409` if not `SCHEDULED` or if any `CONFIRMED` booking exists |
 | `PATCH /api/rides/:id/cancel` | `DRIVER` + ownership | |
 | `PATCH /api/rides/:id/complete` | `DRIVER` + ownership | locks the ride |
 | `POST /api/rides/:id/bookings` | `RIDER` | race-safe seat reservation; `409` if no seats left or ride isn't scheduled |

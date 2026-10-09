@@ -28,6 +28,21 @@ async function createRide(agent: Agent) {
   return res.body.id as string;
 }
 
+async function signupRider(email = "rina@example.com"): Promise<Agent> {
+  const agent = request.agent(app);
+  await agent
+    .post("/api/auth/signup")
+    .set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE)
+    .send({
+      name: "Rina Rider",
+      email,
+      phone: "9999999998",
+      password: "correct-horse",
+      role: "RIDER",
+    });
+  return agent;
+}
+
 const validRide = {
   originLat: 23.0225,
   originLng: 72.5714,
@@ -217,6 +232,107 @@ describe("PATCH /api/rides/:id/complete", () => {
     const res = await agent.patch(`/api/rides/${rideId}/complete`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe("PATCH /api/rides/:id", () => {
+  const editedRide = {
+    ...validRide,
+    destLabel: "Pune",
+    departureTime: "2027-02-01T08:00:00.000Z",
+    totalSeats: 2,
+    estimatedCost: "900.00",
+  };
+
+  it("updates the driver's own scheduled ride and resets seatsAvailable to the new totalSeats", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+
+    const res = await agent.patch(`/api/rides/${rideId}`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(editedRide);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      destLabel: "Pune",
+      totalSeats: 2,
+      seatsAvailable: 2,
+      // Prisma's Decimal serializes without trailing zeros (pre-existing
+      // behavior, same as POST /api/rides — "900.00" in, "900" out).
+      estimatedCost: "900",
+    });
+  });
+
+  it("rejects editing a ride owned by another driver", async () => {
+    const ownerAgent = await signupDriver("owner3@example.com");
+    const rideId = await createRide(ownerAgent);
+    const otherAgent = await signupDriver("other3@example.com");
+
+    const res = await otherAgent.patch(`/api/rides/${rideId}`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(editedRide);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a ride that does not exist", async () => {
+    const agent = await signupDriver();
+
+    const res = await agent
+      .patch("/api/rides/00000000-0000-0000-0000-000000000000")
+      .set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE)
+      .send(editedRide);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects editing a ride that is no longer scheduled", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+    await agent.patch(`/api/rides/${rideId}/cancel`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+
+    const res = await agent.patch(`/api/rides/${rideId}`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(editedRide);
+
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects editing a ride that has a confirmed booking", async () => {
+    const driver = await signupDriver();
+    const rideId = await createRide(driver);
+    const rider = await signupRider();
+    await rider.post(`/api/rides/${rideId}/bookings`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
+
+    const res = await driver.patch(`/api/rides/${rideId}`).set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE).send(editedRide);
+
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects a departureTime in the past", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+
+    const res = await agent
+      .patch(`/api/rides/${rideId}`)
+      .set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE)
+      .send({ ...editedRide, departureTime: "2020-01-01T06:00:00.000Z" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects totalSeats <= 0", async () => {
+    const agent = await signupDriver();
+    const rideId = await createRide(agent);
+
+    const res = await agent
+      .patch(`/api/rides/${rideId}`)
+      .set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE)
+      .send({ ...editedRide, totalSeats: 0 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unauthenticated request", async () => {
+    const res = await request(app)
+      .patch("/api/rides/00000000-0000-0000-0000-000000000000")
+      .set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE)
+      .send(editedRide);
+    expect(res.status).toBe(401);
   });
 });
 

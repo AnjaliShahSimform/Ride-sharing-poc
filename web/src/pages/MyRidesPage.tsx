@@ -1,15 +1,21 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
+import { EditRideForm } from "../components/EditRideForm";
 
 interface MyRide {
   id: string;
   originLabel: string;
+  originLat: number;
+  originLng: number;
   destLabel: string;
+  destLat: number;
+  destLng: number;
   departureTime: string;
   status: "SCHEDULED" | "CANCELLED" | "COMPLETED";
   totalSeats: number;
   seatsAvailable: number;
+  estimatedCost: string;
 }
 
 interface RideBooking {
@@ -22,6 +28,7 @@ interface RideBooking {
 export function MyRidesPage() {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingRideId, setEditingRideId] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery<MyRide[]>({
     queryKey: ["rides", "mine"],
@@ -73,8 +80,14 @@ export function MyRidesPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500">{new Date(ride.departureTime).toLocaleString()}</p>
-            {ride.status === "SCHEDULED" && (
+            {ride.status === "SCHEDULED" && editingRideId !== ride.id && (
               <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => setEditingRideId(ride.id)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                >
+                  Edit
+                </button>
                 <button
                   onClick={() => handleAction(ride.id, "cancel")}
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
@@ -88,6 +101,16 @@ export function MyRidesPage() {
                   Mark complete
                 </button>
               </div>
+            )}
+            {editingRideId === ride.id && (
+              <EditRideForm
+                ride={ride}
+                onCancel={() => setEditingRideId(null)}
+                onSaved={async () => {
+                  setEditingRideId(null);
+                  await queryClient.refetchQueries({ queryKey: ["rides", "mine"] });
+                }}
+              />
             )}
             <RideBookings rideId={ride.id} />
           </li>
