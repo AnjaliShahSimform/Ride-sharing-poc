@@ -18,9 +18,13 @@ on every route: `GET /api/admin/users` (no `passwordHash`), `GET /api/admin/ride
 `GET /api/admin/audit-logs?page=&pageSize=` (the same `AuditLog` table written by
 Bookings/Rides, paginated newest-first — no filtering by entity yet). On the
 frontend, `Layout.tsx` shows the "Users" / "All rides" / "Audit log" nav links
-only when `roles` includes `ADMIN`, and both `/` and post-login redirect an
-admin-only account straight to `/admin/users` instead of the rider/driver
-default of `/rides`.
+only when `roles` includes `ADMIN`. Landing pages come from one helper,
+`web/src/lib/homePath.ts`'s `homePathFor(roles)`, used by `/`, login and signup:
+admin-only → `/admin/users`, driver-only → `/rides/mine`, everyone else
+(riders) → `/rides`. "Search rides" (nav link and the `/rides` route, via
+`RiderOnly` in `main.tsx`) is rider-only, since only a `RIDER` can book; a
+driver who opens `/rides` is redirected home. The backend search endpoint itself
+stays open to any authenticated user.
 
 ## Commands
 
@@ -270,6 +274,10 @@ only alongside a `CONFIRMED` booking, only from `GET /api/bookings/mine` and
 `GET /api/rides/:id/bookings` — `GET /api/rides/search` never selects
 contact fields at all, so "excluded during search" is enforced at the query,
 not by filtering a response afterward.
+One deliberate exception: `GET /api/rides/:id/bookings` (driver only) also
+returns `riderName` and `cancelledAt` for *cancelled* bookings, so the driver can
+see who cancelled and when — e.g. the same rider who then booked again — instead
+of an anonymous row. The phone (`riderContact`) is still CONFIRMED-only.
 
 Every state-changing operation (ride created/cancelled/completed, booking
 created/cancelled, cost recalculated) writes one `AuditLog` row

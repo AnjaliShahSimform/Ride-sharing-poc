@@ -188,6 +188,11 @@ export async function getRideBookings(driverId: string, rideId: string) {
     status: b.status,
     costShare: b.costShare,
     createdAt: b.createdAt,
+    cancelledAt: b.cancelledAt,
+    // Phone stays CONFIRMED-only. The name alone is also given for a cancelled
+    // booking so the driver can tell who cancelled (e.g. the same rider who
+    // later booked again) instead of seeing an anonymous row.
+    riderName: b.rider.name,
     riderContact: b.status === BookingStatus.CONFIRMED ? { name: b.rider.name, phone: b.rider.phone } : null,
   }));
 }

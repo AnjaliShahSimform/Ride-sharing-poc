@@ -1,4 +1,4 @@
-import { PrismaClient, Role, RideStatus } from "@prisma/client";
+import { BookingStatus, Prisma, PrismaClient, Role, RideStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -26,10 +26,10 @@ async function main() {
   const ravi = await upsertUser("ravi.driver@example.com", "Ravi Driver", "9000000002", [Role.DRIVER]);
   const priya = await upsertUser("priya.driver@example.com", "Priya Driver", "9000000005", [Role.DRIVER]);
   const kiran = await upsertUser("kiran.driver@example.com", "Kiran Driver", "9000000006", [Role.DRIVER]);
-  await upsertUser("rina.rider@example.com", "Rina Rider", "9000000003", [Role.RIDER]);
-  await upsertUser("sam.rider@example.com", "Sam Rider", "9000000004", [Role.RIDER]);
-  await upsertUser("neha.rider@example.com", "Neha Rider", "9000000007", [Role.RIDER]);
-  await upsertUser("arjun.rider@example.com", "Arjun Rider", "9000000008", [Role.RIDER]);
+  const rina = await upsertUser("rina.rider@example.com", "Rina Rider", "9000000003", [Role.RIDER]);
+  const sam = await upsertUser("sam.rider@example.com", "Sam Rider", "9000000004", [Role.RIDER]);
+  const neha = await upsertUser("neha.rider@example.com", "Neha Rider", "9000000007", [Role.RIDER]);
+  const arjun = await upsertUser("arjun.rider@example.com", "Arjun Rider", "9000000008", [Role.RIDER]);
   // ADMIN has no self-service signup path (auth.schemas.ts's signupSchema
   // only accepts DRIVER/RIDER) — this is the one place an admin account
   // gets created, same password as every other seeded user.
@@ -38,7 +38,9 @@ async function main() {
   const seededDriverIds = [dara.id, ravi.id, priya.id, kiran.id];
 
   // Re-running the seed should not pile up duplicate rides — clear out
-  // whatever these seeded drivers posted last time, then recreate.
+  // whatever these seeded drivers posted last time, then recreate. Bookings
+  // reference rides, so they have to go first.
+  await prisma.booking.deleteMany({ where: { ride: { driverId: { in: seededDriverIds } } } });
   await prisma.ride.deleteMany({ where: { driverId: { in: seededDriverIds } } });
 
   await prisma.ride.createMany({
@@ -231,6 +233,29 @@ async function main() {
       },
     ],
   });
+
+  // A ride whose seatsAvailable is below totalSeats is "partly booked" — back
+  // that with real CONFIRMED bookings (one per taken seat), so the seat count
+  // and the driver's rider list agree. Writing a lower seatsAvailable alone
+  // would leave seats taken by nobody. Each rider's cost share is the ride's
+  // cost split evenly, matching bookings.service.ts's recalculateShares.
+  const seededRiders = [rina, sam, neha, arjun];
+  const partlyBooked = await prisma.ride.findMany({
+    where: { driverId: { in: seededDriverIds }, status: RideStatus.SCHEDULED },
+  });
+  for (const ride of partlyBooked) {
+    const taken = ride.totalSeats - ride.seatsAvailable;
+    if (taken === 0) continue;
+    const costShare = new Prisma.Decimal(ride.estimatedCost).dividedBy(taken).toDecimalPlaces(2);
+    await prisma.booking.createMany({
+      data: seededRiders.slice(0, taken).map((rider) => ({
+        rideId: ride.id,
+        riderId: rider.id,
+        status: BookingStatus.CONFIRMED,
+        costShare,
+      })),
+    });
+  }
 
   console.log("Seed complete.");
   console.log("  Drivers: dara.driver@example.com / ravi.driver@example.com / priya.driver@example.com / kiran.driver@example.com");

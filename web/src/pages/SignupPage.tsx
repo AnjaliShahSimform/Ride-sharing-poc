@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
+import { homePathFor } from "../lib/homePath";
 
 export function SignupPage() {
   const [name, setName] = useState("");
@@ -19,7 +20,7 @@ export function SignupPage() {
     try {
       await apiFetch("/api/auth/signup", { method: "POST", body: { name, email, phone, password, role } });
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      navigate("/rides");
+      navigate(homePathFor([role]));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     }

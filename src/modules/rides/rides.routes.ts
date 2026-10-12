@@ -197,7 +197,7 @@ ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeR
  *       409: { description: "No seats available, or the ride isn't open for booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *   get:
  *     summary: List bookings for this ride (driver, own ride only)
- *     description: Rider contact info (name, phone) is included only for CONFIRMED bookings.
+ *     description: Rider contact info (name and phone, as `riderContact`) is included only for CONFIRMED bookings. `riderName` (name only) and `cancelledAt` are always present, so a cancelled booking still shows who cancelled and when; the phone is never returned for it.
  *     tags: [Bookings]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]

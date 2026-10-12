@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
+import { homePathFor } from "../lib/homePath";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,8 +20,7 @@ export function LoginPage() {
         body: { email, password },
       });
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      const isAdminOnly = user.roles?.length === 1 && user.roles[0] === "ADMIN";
-      navigate(isAdminOnly ? "/admin/users" : "/rides");
+      navigate(homePathFor(user.roles));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     }

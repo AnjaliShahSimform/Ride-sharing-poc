@@ -22,6 +22,9 @@ interface RideBooking {
   id: string;
   status: "CONFIRMED" | "CANCELLED";
   costShare: string;
+  createdAt: string;
+  cancelledAt: string | null;
+  riderName: string;
   riderContact: { name: string; phone: string } | null;
 }
 
@@ -80,6 +83,13 @@ export function MyRidesPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500">{new Date(ride.departureTime).toLocaleString()}</p>
+            {/* A cancelled ride keeps its old seatsAvailable (the booking cascade
+                doesn't give seats back), so the count would be misleading there. */}
+            {ride.status !== "CANCELLED" && (
+              <p className="mt-1 text-sm text-gray-500">
+                {ride.totalSeats - ride.seatsAvailable} of {ride.totalSeats} seats booked
+              </p>
+            )}
             {ride.status === "SCHEDULED" && editingRideId !== ride.id && (
               <div className="mt-3 flex gap-2">
                 <button
@@ -112,7 +122,7 @@ export function MyRidesPage() {
                 }}
               />
             )}
-            <RideBookings rideId={ride.id} />
+            <RideBookings rideId={ride.id} status={ride.status} />
           </li>
         ))}
       </ul>
@@ -120,25 +130,60 @@ export function MyRidesPage() {
   );
 }
 
-function RideBookings({ rideId }: { rideId: string }) {
+function formatWhen(iso: string) {
+  return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+// Confirmed: full contact + share + when it was booked. Cancelled: name and
+// cancel time only (the API never sends a cancelled booking's phone).
+function bookingLabel(b: RideBooking) {
+  if (b.status === "CONFIRMED" && b.riderContact) {
+    return `${b.riderContact.name} · ${b.riderContact.phone} · ₹${b.costShare} · ${formatWhen(b.createdAt)}`;
+  }
+  const when = b.cancelledAt ? formatWhen(b.cancelledAt) : "";
+  return [b.riderName, when].filter(Boolean).join(" · ") || "Rider unknown";
+}
+
+function RideBookings({ rideId, status }: { rideId: string; status: MyRide["status"] }) {
   const { data } = useQuery<RideBooking[]>({
     queryKey: ["rides", rideId, "bookings"],
     queryFn: () => apiFetch(`/api/rides/${rideId}/bookings`),
+    // Pick up new bookings without a manual reload, but only while the ride
+    // can still receive them.
+    refetchInterval: status === "SCHEDULED" ? 15_000 : false,
   });
 
-  if (!data || data.length === 0) {
+  if (!data) {
     return null;
   }
 
+  if (data.length === 0) {
+    // Nothing to explain on a cancelled/completed ride that was never booked.
+    return status === "SCHEDULED" ? (
+      <p className="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-400">No bookings yet</p>
+    ) : null;
+  }
+
+  // Confirmed riders first; cancelled bookings sit greyed out below.
+  const sorted = [...data].sort((a, b) => Number(b.status === "CONFIRMED") - Number(a.status === "CONFIRMED"));
+
   return (
-    <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3">
-      {data.map((b) => (
-        <li key={b.id} className="text-sm text-gray-600">
-          {b.status === "CONFIRMED" && b.riderContact
-            ? `${b.riderContact.name} · ${b.riderContact.phone} · ₹${b.costShare}`
-            : `Booking ${b.status.toLowerCase()}`}
-        </li>
-      ))}
-    </ul>
+    <div className="mt-3 border-t border-gray-100 pt-3">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Riders</p>
+      <ul className="space-y-1">
+        {sorted.map((b) => (
+          <li key={b.id} className="flex items-center gap-2 text-sm">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                b.status === "CONFIRMED" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+              }`}
+            >
+              {b.status === "CONFIRMED" ? "Booked" : "Cancelled"}
+            </span>
+            <span className={b.status === "CONFIRMED" ? "text-gray-700" : "text-gray-400"}>{bookingLabel(b)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
