@@ -124,6 +124,25 @@ production` over plain `http://localhost:3000`, which means the
 `Secure; SameSite=None` cookie attributes get issued over HTTP — most
 browsers tolerate this for `localhost`, but Safari historically does not.
 
+### Rate limiting
+
+`src/middleware/rateLimit.ts` (`express-rate-limit`, in-memory store — fine for
+the single Render instance; swap in a Redis store before scaling to several).
+`globalLimiter` is mounted in `src/app.ts` after `cors`: per-IP, defaults
+300 requests / 15 min (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`), `/health` and
+`/api-docs` exempt. Per-route overrides are built with `createLimiter({ windowMs,
+max, key })` and added to a route's middleware chain (`loginLimiter`,
+`signupLimiter`, `bookingLimiter`, `searchLimiter`). A request matching both
+is counted by both, so a route override can only *tighten* the global limit;
+to make a route looser, exempt it in `globalLimiter`'s `skip`. `key: "user"`
+keys by JWT subject and only works on routes mounted after `requireAuth`.
+`app.set("trust proxy", 1)` is required behind Render's proxy or every client
+shares one IP bucket. Limiting is off under `NODE_ENV=test` (the integration
+suite logs in far more than the login limit allows) unless
+`RATE_LIMIT_ENABLED=true`. 429s go through `TooManyRequestsError` and
+`errorHandler`; `Retry-After` is set by the library. No automated tests were
+written for this module (explicit decision, like Bookings).
+
 ### Money and matching — two non-obvious data rules from the design spec
 
 - **Money is always `Decimal`, never `Float`**, end-to-end: `estimatedCost` is validated in `rides.schemas.ts` as a regex-checked *string* (`/^\d+(\.\d{1,2})?$/`), not coerced to a JS number, so it never passes through float arithmetic before reaching Prisma's `@db.Decimal(10, 2)` column.

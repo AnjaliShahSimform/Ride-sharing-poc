@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth } from "../../middleware/auth.middleware";
+import { loginLimiter, signupLimiter } from "../../middleware/rateLimit";
 import { validateBody } from "../../middleware/validate";
 import { loginHandler, logoutHandler, meHandler, signupHandler } from "./auth.controller";
 import { loginSchema, signupSchema } from "./auth.schemas";
@@ -55,9 +56,10 @@ export const authRouter = Router();
  *               properties:
  *                 user: { $ref: '#/components/schemas/User' }
  *       400: { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many signups from this IP (5 per hour)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: An account with this email already exists, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-authRouter.post("/signup", validateBody(signupSchema), asyncHandler(signupHandler));
+authRouter.post("/signup", signupLimiter, validateBody(signupSchema), asyncHandler(signupHandler));
 
 /**
  * @swagger
@@ -84,9 +86,10 @@ authRouter.post("/signup", validateBody(signupSchema), asyncHandler(signupHandle
  *               type: object
  *               properties:
  *                 user: { $ref: '#/components/schemas/User' }
+ *       429: { description: "Too many failed logins from this IP (10 per 15 minutes)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       401: { description: Invalid email or password, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-authRouter.post("/login", validateBody(loginSchema), asyncHandler(loginHandler));
+authRouter.post("/login", loginLimiter, validateBody(loginSchema), asyncHandler(loginHandler));
 
 /**
  * @swagger

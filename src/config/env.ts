@@ -27,6 +27,16 @@ const envSchema = z.object({
     .transform((origin) => origin.replace(/\/$/, "")),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("1d"),
+  // Global per-IP rate limit (src/middleware/rateLimit.ts). Individual routes
+  // can layer a stricter limit on top via createLimiter().
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // Unset means "on, except under NODE_ENV=test" — the integration suite makes
+  // far more logins from one IP than the login limiter allows.
+  RATE_LIMIT_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === undefined ? undefined : v === "true"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
+import { bookingLimiter, searchLimiter } from "../../middleware/rateLimit";
 import { validateBody, validateQuery } from "../../middleware/validate";
 import { createBookingHandler, getRideBookingsHandler } from "../bookings/bookings.controller";
 import {
@@ -92,8 +93,9 @@ ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asy
  *         content:
  *           application/json:
  *             schema: { type: array, items: { $ref: '#/components/schemas/Ride' } }
+ *       429: { description: "Too many searches (60 per minute per user)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-ridesRouter.get("/search", validateQuery(searchRidesQuerySchema), asyncHandler(searchRidesHandler));
+ridesRouter.get("/search", searchLimiter, validateQuery(searchRidesQuerySchema), asyncHandler(searchRidesHandler));
 
 /**
  * @swagger
@@ -191,6 +193,7 @@ ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeR
  *       201: { description: Booking confirmed, content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } }
  *       403: { description: Caller isn't a RIDER, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many booking attempts (10 per minute per user)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: "No seats available, or the ride isn't open for booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *   get:
  *     summary: List bookings for this ride (driver, own ride only)
@@ -203,5 +206,5 @@ ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeR
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-ridesRouter.post("/:id/bookings", requireRole("RIDER"), asyncHandler(createBookingHandler));
+ridesRouter.post("/:id/bookings", requireRole("RIDER"), bookingLimiter, asyncHandler(createBookingHandler));
 ridesRouter.get("/:id/bookings", requireRole("DRIVER"), asyncHandler(getRideBookingsHandler));
