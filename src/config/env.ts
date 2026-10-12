@@ -60,6 +60,20 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().min(1).default("Ride Share <no-reply@ride-sharing.local>"),
+  // Optional. When set, rate-limit counters live in Redis (shared across
+  // instances, survive restarts); when unset they stay in process memory.
+  REDIS_URL: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined),
+  // Kill switch for Redis even when REDIS_URL is set. vitest.config.ts sets it
+  // to "false": REDIS_URL lives in .env (which overrides the shell), and the
+  // suite resets the database directly, so a live search cache would serve
+  // rides from earlier tests.
+  REDIS_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 
@@ -74,4 +88,5 @@ if (!parsed.success) {
 export const env = {
   ...parsed.data,
   NOTIFICATIONS_ENABLED: parsed.data.NOTIFICATIONS_ENABLED ?? true,
+  REDIS_URL: parsed.data.REDIS_ENABLED === false ? undefined : parsed.data.REDIS_URL,
 };

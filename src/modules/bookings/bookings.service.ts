@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
+import { invalidateSearchCacheAfter } from "../../lib/searchCache";
 import { notifyBookingCancelled, notifyBookingCreated } from "../notifications/notify";
 
 function splitCost(totalCost: Prisma.Decimal, confirmedCount: number): Prisma.Decimal {
@@ -34,7 +35,7 @@ export async function recalculateShares(tx: Prisma.TransactionClient, rideId: st
 // for the same ride's last seat must result in exactly one CONFIRMED
 // booking. See design spec §5 for why the conditional UPDATE is race-safe
 // without an explicit lock statement.
-export async function bookSeat(rideId: string, riderId: string) {
+async function bookSeatTransaction(rideId: string, riderId: string) {
   return prisma.$transaction(async (tx) => {
     const ride = await tx.ride.findUnique({ where: { id: rideId }, include: { driver: true } });
     if (!ride) {
@@ -77,7 +78,11 @@ export async function bookSeat(rideId: string, riderId: string) {
   });
 }
 
-export async function cancelBooking(actorId: string, bookingId: string) {
+export function bookSeat(rideId: string, riderId: string) {
+  return invalidateSearchCacheAfter(bookSeatTransaction(rideId, riderId));
+}
+
+async function cancelBookingTransaction(actorId: string, bookingId: string) {
   return prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({
       where: { id: bookingId },
@@ -133,6 +138,10 @@ export async function cancelBooking(actorId: string, bookingId: string) {
 
     return cancelled;
   });
+}
+
+export function cancelBooking(actorId: string, bookingId: string) {
+  return invalidateSearchCacheAfter(cancelBookingTransaction(actorId, bookingId));
 }
 
 export async function getMyBookings(riderId: string) {

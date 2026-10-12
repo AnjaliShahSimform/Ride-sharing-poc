@@ -45,6 +45,10 @@ services:
         sync: false # a sender address your SMTP provider has verified
       - key: RUN_WORKER_IN_PROCESS
         value: "true"
+      # Rate-limit counters. Optional: unset = in-memory (reset on every
+      # restart/cold start). Free tiers: Upstash or Redis Cloud (rediss:// URL).
+      - key: REDIS_URL
+        sync: false
   - type: web
     name: ride-sharing-poc-web
     runtime: static

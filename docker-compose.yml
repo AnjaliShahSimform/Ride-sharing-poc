@@ -30,6 +30,17 @@ services:
       timeout: 10s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # Local SMTP sink: accepts every email and shows it at http://localhost:8025
   # instead of delivering it anywhere.
   mailpit:
@@ -47,9 +58,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
+      REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
       DIRECT_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}

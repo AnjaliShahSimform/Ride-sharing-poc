@@ -2,6 +2,7 @@ import { app } from "./app";
 import { env } from "./config/env";
 import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
+import { closeRedis } from "./lib/redis";
 import { startNotifications, stopNotifications } from "./modules/notifications";
 
 const server = app.listen(env.PORT, () => {
@@ -20,6 +21,7 @@ async function shutdown(signal: string) {
     if (env.RUN_WORKER_IN_PROCESS) {
       await stopNotifications();
     }
+    await closeRedis();
     await prisma.$disconnect();
     process.exit(0);
   });

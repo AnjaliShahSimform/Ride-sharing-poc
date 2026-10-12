@@ -126,8 +126,19 @@ browsers tolerate this for `localhost`, but Safari historically does not.
 
 ### Rate limiting
 
-`src/middleware/rateLimit.ts` (`express-rate-limit`, in-memory store — fine for
-the single Render instance; swap in a Redis store before scaling to several).
+`src/middleware/rateLimit.ts` (`express-rate-limit`). Counters live in Redis when
+`REDIS_URL` is set (`src/lib/redisRateLimitStore.ts`, keys `rl:<limiter name>:<ip|user>`,
+so they're shared across instances and survive restarts/cold starts), otherwise in
+the library's default in-memory store — so local dev and the test suite need no
+Redis. Every limiter takes a unique `name` (its Redis key namespace). **Fail
+open:** `passOnStoreError: true` plus `src/lib/redis.ts`'s `disableOfflineQueue`
+mean a Redis outage makes the limiter throw instantly (~3ms) and the request
+passes unlimited, instead of hanging or 5xx-ing — the API stays up, but login
+brute-force protection is off until Redis returns (one throttled warning per
+30s is logged). The store is hand-written (one Lua `INCR`+`PEXPIRE` script)
+rather than the `rate-limit-redis` package, because that package loads its
+scripts in `init()` and every request awaits that load: with Redis down at
+boot, requests would hang or limiting would be disabled permanently.
 `globalLimiter` is mounted in `src/app.ts` after `cors`: per-IP, defaults
 300 requests / 15 min (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`), `/health` and
 `/api-docs` exempt. Per-route overrides are built with `createLimiter({ windowMs,
@@ -186,6 +197,36 @@ the outbox just accumulates.
   Bookings and rate limiting).
 - Footgun: `tsx watch` (`npm run dev`) restarts the relay on every file save;
   harmless because unpublished rows are simply picked up again.
+
+### Search cache (Redis, generation-counter invalidation)
+
+`GET /api/rides/search` is cached in Redis (`src/lib/searchCache.ts`, wired in
+`rides.service.ts`'s `searchRides`). Cache keys are
+`search:<generation>:<sha256 of the exact query params>`; the generation is the
+integer at Redis key `search:gen`. Every write that can change a search result
+— `createRide`, `editRide`, `cancelRide`, `completeRide`, `bookSeat`,
+`cancelBooking` — runs through `invalidateSearchCacheAfter(...)` and `INCR`s the
+generation **after its transaction commits** (never inside it), which makes every
+cached entry unreachable at once. A counter instead of deleting keys is
+deliberate: with deletion, a reader that fetched old data before the commit can
+store it after the delete and leave a stale entry; here the reader reads the
+generation *before* querying Postgres and stores under that generation's key, so
+a late store lands on a key nobody reads again. Entries have a 60s TTL (reclaims
+old generations; also bounds staleness if an `INCR` ever fails). It is optional
+and fail-open like the rate limiter: no `REDIS_URL` or any Redis error → straight
+to Postgres. It is a read cache only — `bookSeat`'s row-locked `UPDATE` still
+decides seat availability, so a stale entry can never cause an overbooking.
+
+- **Adding a new write path** that touches `Ride.status`, `seatsAvailable`,
+  route, time or cost (or inserts a ride) must call
+  `invalidateSearchCacheAfter`/`invalidateSearchCache`, or search will serve
+  stale results for up to 60s. Bookings and ride writes done directly through
+  Prisma (seed scripts, admin SQL) bypass it for the same reason.
+- Tradeoff: one global generation means any booking/ride change invalidates
+  every cached search. Fine at POC traffic; the scale path is a generation per
+  region.
+- Cached hits go through JSON, so `Date`/`Decimal` fields come back as strings —
+  identical to what `res.json()` sends, which is the only consumer.
 
 ### Money and matching — two non-obvious data rules from the design spec
 

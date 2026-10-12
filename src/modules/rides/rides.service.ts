@@ -2,6 +2,7 @@ import { BookingStatus, RideStatus } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
+import { invalidateSearchCacheAfter, withSearchCache } from "../../lib/searchCache";
 import { notifyRideTransition } from "../notifications/notify";
 import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 
@@ -10,7 +11,7 @@ import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 // box at POC scale — see design spec §4 for the PostGIS upgrade path.
 const KM_PER_DEGREE_LAT = 111;
 
-export async function createRide(driverId: string, input: CreateRideInput) {
+async function createRideTransaction(driverId: string, input: CreateRideInput) {
   return prisma.$transaction(async (tx) => {
     const ride = await tx.ride.create({
       data: {
@@ -34,7 +35,26 @@ export async function createRide(driverId: string, input: CreateRideInput) {
   });
 }
 
-export async function searchRides(query: SearchRidesQuery) {
+export function createRide(driverId: string, input: CreateRideInput) {
+  return invalidateSearchCacheAfter(createRideTransaction(driverId, input));
+}
+
+export function searchRides(query: SearchRidesQuery) {
+  // Redis-cached, invalidated by every write that can change a result (see
+  // lib/searchCache.ts). Every field the result depends on is in the key.
+  const key = [
+    query.originLat,
+    query.originLng,
+    query.destLat,
+    query.destLng,
+    query.earliestDeparture.toISOString(),
+    query.latestDeparture.toISOString(),
+    query.radiusKm,
+  ].join(",");
+  return withSearchCache(key, () => findMatchingRides(query));
+}
+
+async function findMatchingRides(query: SearchRidesQuery) {
   const { originLat, originLng, destLat, destLng, earliestDeparture, latestDeparture, radiusKm } = query;
 
   const latDelta = radiusKm / KM_PER_DEGREE_LAT;
@@ -73,7 +93,7 @@ export async function getMyRides(driverId: string) {
 // the same way — the conditional updateMany takes the Ride row lock *before*
 // the confirmed-booking check, so a concurrent bookSeat blocks on this row
 // until this transaction commits or rolls back, instead of racing it.
-export async function editRide(driverId: string, rideId: string, input: CreateRideInput) {
+async function editRideTransaction(driverId: string, rideId: string, input: CreateRideInput) {
   return prisma.$transaction(async (tx) => {
     const ride = await tx.ride.findUnique({ where: { id: rideId } });
     if (!ride) {
@@ -117,6 +137,10 @@ export async function editRide(driverId: string, rideId: string, input: CreateRi
     await writeAuditLog(tx, "Ride", rideId, "UPDATED", driverId);
     return updated;
   });
+}
+
+export function editRide(driverId: string, rideId: string, input: CreateRideInput) {
+  return invalidateSearchCacheAfter(editRideTransaction(driverId, rideId, input));
 }
 
 // Ownership check (this specific record) lives here, in the service layer —
@@ -193,9 +217,9 @@ async function transitionRide(driverId: string, rideId: string, toStatus: RideSt
 }
 
 export function cancelRide(driverId: string, rideId: string) {
-  return transitionRide(driverId, rideId, RideStatus.CANCELLED);
+  return invalidateSearchCacheAfter(transitionRide(driverId, rideId, RideStatus.CANCELLED));
 }
 
 export function completeRide(driverId: string, rideId: string) {
-  return transitionRide(driverId, rideId, RideStatus.COMPLETED);
+  return invalidateSearchCacheAfter(transitionRide(driverId, rideId, RideStatus.COMPLETED));
 }
