@@ -3,7 +3,7 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { env } from "../config/env";
 import { TooManyRequestsError } from "../lib/AppError";
 
-const enabled = env.RATE_LIMIT_ENABLED ?? env.NODE_ENV !== "test";
+const enabled = env.RATE_LIMIT_ENABLED ?? true;
 
 interface LimiterOptions {
   windowMs: number;

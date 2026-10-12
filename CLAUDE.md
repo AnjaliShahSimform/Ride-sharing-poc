@@ -137,11 +137,55 @@ is counted by both, so a route override can only *tighten* the global limit;
 to make a route looser, exempt it in `globalLimiter`'s `skip`. `key: "user"`
 keys by JWT subject and only works on routes mounted after `requireAuth`.
 `app.set("trust proxy", 1)` is required behind Render's proxy or every client
-shares one IP bucket. Limiting is off under `NODE_ENV=test` (the integration
-suite logs in far more than the login limit allows) unless
-`RATE_LIMIT_ENABLED=true`. 429s go through `TooManyRequestsError` and
+shares one IP bucket. The integration suite logs in far more than the login
+limit allows, so `vitest.config.ts` sets `RATE_LIMIT_ENABLED=false` — it does
+*not* rely on `NODE_ENV=test`, because `.env` sets `NODE_ENV=development` and
+`env.ts`'s `dotenv.config({ override: true })` clobbers Vitest's value. 429s go through `TooManyRequestsError` and
 `errorHandler`; `Retry-After` is set by the library. No automated tests were
 written for this module (explicit decision, like Bookings).
+
+### Email notifications (outbox → RabbitMQ → Nodemailer)
+
+`src/modules/notifications/`. `bookSeat`, `cancelBooking` and `transitionRide`
+call `notify.ts`, which writes `OutboxEvent` rows via `src/lib/outbox.ts`'s
+`enqueueEmail` **inside the same transaction** as the change (same rule as
+`writeAuditLog`) — an email is queued iff the change committed. One row = one
+fully addressed email with its template variables snapshotted, so the consumer
+needs no domain data. A relay (`relay.ts`) polls unpublished rows every 2s
+(`FOR UPDATE SKIP LOCKED`, safe across instances) and publishes them to the
+`notifications` exchange; the consumer (`consumer.ts`) renders
+(`templates.ts`) and sends (`mailer.ts`). Delivery is at-least-once: the
+consumer dedupes on `OutboxEvent.sentAt`. Failures: transient SMTP errors go
+to `email.retry` (30s TTL, dead-letters back to `email.send`), max 5 attempts;
+permanent ones (5xx reply, unknown template, bad payload) and exhausted
+retries land in `email.dead`, which nothing consumes — inspect it in the
+RabbitMQ UI. Connection loss is handled by amqplib's `recovery` option
+(`broker.ts`); the web server boots and serves even if RabbitMQ is down, and
+the outbox just accumulates.
+
+- **Emails sent:** booking created (rider + driver), booking cancelled (the
+  *other* party), ride cancelled / completed (every `CONFIRMED` rider). There
+  is no "ride edited" email because `editRide` refuses rides with confirmed
+  bookings. Name/phone appear only for the other party of a `CONFIRMED`
+  booking; every email goes only to the user's own address.
+- **Where the worker runs:** `RUN_WORKER_IN_PROCESS=true` (default) starts
+  relay + consumer inside the web process — needed on Render's free plan
+  (no free background worker). `docker-compose.yml` instead sets it `false`
+  on `app` and runs `node dist/worker.js` (`src/worker.ts`) as a `worker`
+  service. Same code either way.
+- **Local dev:** `docker compose up -d db rabbitmq mailpit`; read sent mail at
+  http://localhost:8025 (Mailpit keeps mail in memory only — restarting it
+  clears the inbox), RabbitMQ UI at http://localhost:15672 (guest/guest).
+  `vitest.config.ts` sets `NOTIFICATIONS_ENABLED=false` (and
+  `RATE_LIMIT_ENABLED=false`) explicitly, so the integration suite never
+  writes outbox rows or needs RabbitMQ.
+- **Free production stack:** CloudAMQP "Little Lemur" for `AMQP_URL`, Brevo
+  (300 emails/day) or Gmail + app password for `SMTP_*`. Render free
+  instances sleep when idle; pending outbox rows go out when the app wakes.
+- No automated tests were written for this module (explicit decision, like
+  Bookings and rate limiting).
+- Footgun: `tsx watch` (`npm run dev`) restarts the relay on every file save;
+  harmless because unpublished rows are simply picked up again.
 
 ### Money and matching — two non-obvious data rules from the design spec
 

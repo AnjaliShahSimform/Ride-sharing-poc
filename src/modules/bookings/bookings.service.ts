@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
+import { notifyBookingCancelled, notifyBookingCreated } from "../notifications/notify";
 
 function splitCost(totalCost: Prisma.Decimal, confirmedCount: number): Prisma.Decimal {
   return totalCost.dividedBy(confirmedCount).toDecimalPlaces(2);
@@ -35,7 +36,7 @@ export async function recalculateShares(tx: Prisma.TransactionClient, rideId: st
 // without an explicit lock statement.
 export async function bookSeat(rideId: string, riderId: string) {
   return prisma.$transaction(async (tx) => {
-    const ride = await tx.ride.findUnique({ where: { id: rideId } });
+    const ride = await tx.ride.findUnique({ where: { id: rideId }, include: { driver: true } });
     if (!ride) {
       throw new NotFoundError("Ride not found");
     }
@@ -63,13 +64,25 @@ export async function bookSeat(rideId: string, riderId: string) {
 
     await writeAuditLog(tx, "Booking", booking.id, "CREATED", riderId, { rideId });
 
+    const rider = await tx.user.findUniqueOrThrow({ where: { id: riderId } });
+    await notifyBookingCreated(tx, {
+      ride,
+      driver: ride.driver,
+      rider,
+      costShare: share ?? booking.costShare,
+      seatsAvailable: ride.seatsAvailable - 1,
+    });
+
     return share ? { ...booking, costShare: share } : booking;
   });
 }
 
 export async function cancelBooking(actorId: string, bookingId: string) {
   return prisma.$transaction(async (tx) => {
-    const booking = await tx.booking.findUnique({ where: { id: bookingId }, include: { ride: true } });
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      include: { ride: { include: { driver: true } }, rider: true },
+    });
     if (!booking) {
       throw new NotFoundError("Booking not found");
     }
@@ -110,6 +123,13 @@ export async function cancelBooking(actorId: string, bookingId: string) {
 
     await recalculateShares(tx, booking.rideId, booking.ride.estimatedCost);
     await writeAuditLog(tx, "Booking", bookingId, "CANCELLED", actorId, { rideId: booking.rideId });
+
+    await notifyBookingCancelled(tx, {
+      ride: booking.ride,
+      driver: booking.ride.driver,
+      rider: booking.rider,
+      cancelledBy: booking.riderId === actorId ? "RIDER" : "DRIVER",
+    });
 
     return cancelled;
   });

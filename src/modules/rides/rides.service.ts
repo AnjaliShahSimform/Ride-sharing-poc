@@ -2,6 +2,7 @@ import { BookingStatus, RideStatus } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
+import { notifyRideTransition } from "../notifications/notify";
 import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 
 // Rough km-per-degree-latitude; degrees-of-longitude shrink toward the poles,
@@ -124,7 +125,7 @@ export async function editRide(driverId: string, rideId: string, input: CreateRi
 // design spec §6.
 async function transitionRide(driverId: string, rideId: string, toStatus: RideStatus) {
   return prisma.$transaction(async (tx) => {
-    const ride = await tx.ride.findUnique({ where: { id: rideId } });
+    const ride = await tx.ride.findUnique({ where: { id: rideId }, include: { driver: true } });
     if (!ride) {
       throw new NotFoundError("Ride not found");
     }
@@ -154,7 +155,10 @@ async function transitionRide(driverId: string, rideId: string, toStatus: RideSt
     const updated = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
 
     if (toStatus === RideStatus.CANCELLED) {
-      const cascaded = await tx.booking.findMany({ where: { rideId, status: BookingStatus.CONFIRMED } });
+      const cascaded = await tx.booking.findMany({
+        where: { rideId, status: BookingStatus.CONFIRMED },
+        include: { rider: true },
+      });
       if (cascaded.length > 0) {
         await tx.booking.updateMany({
           where: { rideId, status: BookingStatus.CONFIRMED },
@@ -164,8 +168,24 @@ async function transitionRide(driverId: string, rideId: string, toStatus: RideSt
       await writeAuditLog(tx, "Ride", rideId, "CANCELLED", driverId, {
         cascadedBookingIds: cascaded.map((b) => b.id),
       });
+      await notifyRideTransition(tx, {
+        template: "RIDE_CANCELLED",
+        ride,
+        driver: ride.driver,
+        riders: cascaded.map((b) => b.rider),
+      });
     } else {
       await writeAuditLog(tx, "Ride", rideId, toStatus, driverId);
+      const confirmed = await tx.booking.findMany({
+        where: { rideId, status: BookingStatus.CONFIRMED },
+        include: { rider: true },
+      });
+      await notifyRideTransition(tx, {
+        template: "RIDE_COMPLETED",
+        ride,
+        driver: ride.driver,
+        riders: confirmed.map((b) => b.rider),
+      });
     }
 
     return updated;

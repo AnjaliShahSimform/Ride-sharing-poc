@@ -90,3 +90,21 @@ model AuditLog {
 
   @@index([entityType, entityId])
 }
+
+// Transactional outbox for email notifications. A row is written in the same
+// transaction as the change that caused it, so an email is queued if and only
+// if that change committed. The notifications relay publishes unpublished
+// rows to RabbitMQ; the consumer sends them and stamps `sentAt`.
+// One row = one ready-to-send email (already addressed and with its template
+// variables snapshotted), so the consumer needs no domain data.
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  template    String
+  toEmail     String
+  vars        Json
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  sentAt      DateTime?
+
+  @@index([publishedAt, createdAt])
+}

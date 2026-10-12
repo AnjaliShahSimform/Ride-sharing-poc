@@ -16,11 +16,36 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # management UI (guest / guest)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # Local SMTP sink: accepts every email and shows it at http://localhost:8025
+  # instead of delivering it anywhere.
+  mailpit:
+    image: axllent/mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web UI
+
   app:
     build: .
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -30,9 +55,37 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The relay + consumer run in the `worker` service below, not in here.
+      RUN_WORKER_IN_PROCESS: "false"
     ports:
       - "3000:3000"
     command: sh -c "npx prisma migrate deploy && node dist/server.js"
 
+  # Outbox relay + email consumer as their own process. Starts after `app` so
+  # migrations (which create the OutboxEvent table) have already run.
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      AMQP_URL: amqp://guest:guest@rabbitmq:5672
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    command: node dist/worker.js
+
 volumes:
   db_data:
+  rabbitmq_data:

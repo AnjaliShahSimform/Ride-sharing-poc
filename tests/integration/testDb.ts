@@ -7,5 +7,6 @@ export async function resetDb() {
   await prisma.booking.deleteMany();
   await prisma.ride.deleteMany();
   await prisma.auditLog.deleteMany();
+  await prisma.outboxEvent.deleteMany();
   await prisma.user.deleteMany();
 }

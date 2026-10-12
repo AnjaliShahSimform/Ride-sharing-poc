@@ -27,6 +27,24 @@ services:
         value: 1d
       - key: LOG_LEVEL
         value: info
+      # Email notifications. The relay + consumer run inside this web service
+      # (RUN_WORKER_IN_PROCESS) because Render's free plan has no free
+      # background worker. Use free tiers: CloudAMQP "Little Lemur" for
+      # RabbitMQ, Brevo (300 emails/day) or Gmail + app password for SMTP.
+      - key: AMQP_URL
+        sync: false # CloudAMQP's amqps:// connection URL
+      - key: SMTP_HOST
+        sync: false # e.g. smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false # a sender address your SMTP provider has verified
+      - key: RUN_WORKER_IN_PROCESS
+        value: "true"
   - type: web
     name: ride-sharing-poc-web
     runtime: static

@@ -31,12 +31,35 @@ const envSchema = z.object({
   // can layer a stricter limit on top via createLimiter().
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
-  // Unset means "on, except under NODE_ENV=test" — the integration suite makes
-  // far more logins from one IP than the login limiter allows.
+  // Unset means "on". The integration suite sets this to "false" in
+  // vitest.config.ts (it makes far more logins from one IP than the login
+  // limiter allows); NODE_ENV=test can't be used for this because .env's
+  // NODE_ENV=development overrides it.
   RATE_LIMIT_ENABLED: z
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === undefined ? undefined : v === "true"),
+  // Email notifications: services write OutboxEvent rows, a relay publishes
+  // them to RabbitMQ, a consumer sends them via SMTP. Unset means "on"
+  // (vitest.config.ts turns it off for the test suite). Defaults match
+  // docker-compose.yml's local rabbitmq + mailpit containers.
+  NOTIFICATIONS_ENABLED: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  // Run the relay + consumer inside the web process. Required on Render's
+  // free plan (background workers aren't free); set to false and run
+  // `node dist/worker.js` as its own process (docker-compose's `worker`).
+  RUN_WORKER_IN_PROCESS: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  AMQP_URL: z.string().min(1).default("amqp://guest:guest@localhost:5672"),
+  SMTP_HOST: z.string().min(1).default("localhost"),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().min(1).default("Ride Share <no-reply@ride-sharing.local>"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 
@@ -48,4 +71,7 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  NOTIFICATIONS_ENABLED: parsed.data.NOTIFICATIONS_ENABLED ?? true,
+};
