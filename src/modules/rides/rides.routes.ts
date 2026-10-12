@@ -151,7 +151,7 @@ ridesRouter.patch("/:id", requireRole("DRIVER"), validateBody(createRideSchema),
  * /api/rides/{id}/cancel:
  *   patch:
  *     summary: Cancel a ride (driver, own ride only)
- *     description: Cascades — every CONFIRMED booking on this ride also flips to CANCELLED, in the same transaction.
+ *     description: Cascades — every CONFIRMED booking on this ride also flips to CANCELLED, in the same transaction. Only allowed until the ride's day of departure begins (00:00 IST on its date); after that it returns 409.
  *     tags: [Rides]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
@@ -159,7 +159,7 @@ ridesRouter.patch("/:id", requireRole("DRIVER"), validateBody(createRideSchema),
  *       200: { content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       409: { description: Ride is already cancelled or completed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Ride is already cancelled or completed, or it is on/after its day of departure", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.patch("/:id/cancel", requireRole("DRIVER"), asyncHandler(cancelRideHandler));
 
@@ -168,7 +168,7 @@ ridesRouter.patch("/:id/cancel", requireRole("DRIVER"), asyncHandler(cancelRideH
  * /api/rides/{id}/complete:
  *   patch:
  *     summary: Mark a ride completed (driver, own ride only)
- *     description: Locks the ride — no further cancel/complete/booking/booking-cancel is possible on it afterward.
+ *     description: Locks the ride — no further cancel/complete/booking/booking-cancel is possible on it afterward. Only allowed once the ride has departed (now >= departureTime); before that it returns 409. Rides left SCHEDULED are also closed automatically by a background job 12h (AUTO_COMPLETE_AFTER_HOURS) after departure.
  *     tags: [Rides]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
@@ -176,7 +176,7 @@ ridesRouter.patch("/:id/cancel", requireRole("DRIVER"), asyncHandler(cancelRideH
  *       200: { content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       409: { description: Ride is already cancelled or completed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Ride is already cancelled or completed, or it has not departed yet", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeRideHandler));
 
@@ -194,7 +194,7 @@ ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeR
  *       403: { description: Caller isn't a RIDER, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       429: { description: "Too many booking attempts (10 per minute per user)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       409: { description: "No seats available, or the ride isn't open for booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "No seats available, the ride isn't open for booking, or it has already departed", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *   get:
  *     summary: List bookings for this ride (driver, own ride only)
  *     description: Rider contact info (name and phone, as `riderContact`) is included only for CONFIRMED bookings. `riderName` (name only) and `cancelledAt` are always present, so a cancelled booking still shows who cancelled and when; the phone is never returned for it.

@@ -39,7 +39,7 @@ bookingsRouter.get("/mine", asyncHandler(getMyBookingsHandler));
  * /api/bookings/{id}/cancel:
  *   patch:
  *     summary: Cancel a booking
- *     description: Callable by either the booking's own rider or the ride's driver — no one else. Returns the seat to availability and recalculates the remaining confirmed riders' cost shares, unless the ride is no longer SCHEDULED (e.g. already completed), in which case this returns 409.
+ *     description: Callable by either the booking's own rider or the ride's driver — no one else. Returns the seat to availability and recalculates the remaining confirmed riders' cost shares, unless the ride is no longer SCHEDULED (e.g. already completed), in which case this returns 409. Also returns 409 on or after the ride's day of departure (00:00 IST on its date), for the rider and the driver alike.
  *     tags: [Bookings]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
@@ -47,6 +47,6 @@ bookingsRouter.get("/mine", asyncHandler(getMyBookingsHandler));
  *       200: { content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } }
  *       403: { description: Caller is neither the rider nor the ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Booking not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       409: { description: "Booking already cancelled, or the ride is no longer open", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Booking already cancelled, the ride is no longer open, or it is on/after the ride's day of departure", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 bookingsRouter.patch("/:id/cancel", asyncHandler(cancelBookingHandler));

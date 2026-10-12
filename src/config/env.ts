@@ -74,6 +74,10 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === "true")),
+  // How long after a ride's departure the background job closes it out (rides
+  // have no end time): completed if it had confirmed riders, otherwise
+  // cancelled as expired. Must stay > 0.
+  AUTO_COMPLETE_AFTER_HOURS: z.coerce.number().positive().default(12),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 

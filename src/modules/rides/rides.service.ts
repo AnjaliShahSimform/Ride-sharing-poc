@@ -1,8 +1,10 @@
 import { BookingStatus, RideStatus } from "@prisma/client";
+import { env } from "../../config/env";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
-import { invalidateSearchCacheAfter, withSearchCache } from "../../lib/searchCache";
+import { hasDeparted, isCancellationWindowClosed } from "../../lib/rideTime";
+import { invalidateSearchCache, invalidateSearchCacheAfter, withSearchCache } from "../../lib/searchCache";
 import { notifyRideTransition } from "../notifications/notify";
 import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 
@@ -159,6 +161,15 @@ async function transitionRide(driverId: string, rideId: string, toStatus: RideSt
     if (ride.status !== RideStatus.SCHEDULED) {
       throw new ConflictError(`Ride is already ${ride.status.toLowerCase()}`);
     }
+    // Time rules. Checked against the row just read; a concurrent editRide
+    // can't move departureTime on a ride that has confirmed bookings, and the
+    // conditional UPDATE below still guards the status race.
+    if (toStatus === RideStatus.CANCELLED && isCancellationWindowClosed(ride.departureTime)) {
+      throw new ConflictError("A ride can't be cancelled on or after its day of departure");
+    }
+    if (toStatus === RideStatus.COMPLETED && !hasDeparted(ride.departureTime)) {
+      throw new ConflictError("A ride can only be completed after it has departed");
+    }
 
     // Conditional UPDATE, not a plain update: re-checks status under the same
     // row lock that performs the write, so two concurrent transitions on the
@@ -222,4 +233,72 @@ export function cancelRide(driverId: string, rideId: string) {
 
 export function completeRide(driverId: string, rideId: string) {
   return invalidateSearchCacheAfter(transitionRide(driverId, rideId, RideStatus.COMPLETED));
+}
+
+const EXPIRY_BATCH_SIZE = 200;
+
+// Closes out rides that departed more than AUTO_COMPLETE_AFTER_HOURS ago and
+// are still SCHEDULED (rides have no end time, so "long enough ago" stands in
+// for "it's over"). Run periodically by the background job; safe to run on
+// several instances at once and to re-run — it only ever touches rides that are
+// still SCHEDULED when it locks them.
+//   - had confirmed riders -> COMPLETED, riders get the usual completion email
+//   - nobody booked        -> CANCELLED, audited as an expiry, no email
+// Returns how many rides it closed. Handles at most EXPIRY_BATCH_SIZE per call;
+// the next tick picks up the rest.
+export async function closeExpiredRides(now: Date = new Date()) {
+  const cutoff = new Date(now.getTime() - env.AUTO_COMPLETE_AFTER_HOURS * 60 * 60 * 1000);
+  const candidates = await prisma.ride.findMany({
+    where: { status: RideStatus.SCHEDULED, departureTime: { lt: cutoff } },
+    select: { id: true },
+    orderBy: { departureTime: "asc" },
+    take: EXPIRY_BATCH_SIZE,
+  });
+
+  let closed = 0;
+  for (const { id } of candidates) {
+    const didClose = await prisma.$transaction(async (tx) => {
+      // Take the Ride row lock first (Ride before Booking, like every other
+      // path) and re-check the conditions under it. SKIP LOCKED: if another
+      // instance — or a driver's manual cancel/complete — holds this ride right
+      // now, leave it; it's either being closed already or will show up as no
+      // longer SCHEDULED next tick.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Ride"
+        WHERE "id" = ${id} AND "status" = 'SCHEDULED' AND "departureTime" < ${cutoff}
+        FOR UPDATE SKIP LOCKED`;
+      if (locked.length === 0) {
+        return false;
+      }
+
+      const ride = await tx.ride.findUniqueOrThrow({ where: { id }, include: { driver: true } });
+      const confirmed = await tx.booking.findMany({
+        where: { rideId: id, status: BookingStatus.CONFIRMED },
+        include: { rider: true },
+      });
+
+      if (confirmed.length > 0) {
+        await tx.ride.update({ where: { id }, data: { status: RideStatus.COMPLETED } });
+        await writeAuditLog(tx, "Ride", id, RideStatus.COMPLETED, "system", { reason: "AUTO_COMPLETED" });
+        await notifyRideTransition(tx, {
+          template: "RIDE_COMPLETED",
+          ride,
+          driver: ride.driver,
+          riders: confirmed.map((b) => b.rider),
+        });
+      } else {
+        await tx.ride.update({ where: { id }, data: { status: RideStatus.CANCELLED } });
+        await writeAuditLog(tx, "Ride", id, "CANCELLED", "system", { reason: "EXPIRED_NO_BOOKINGS" });
+      }
+      return true;
+    });
+    if (didClose) {
+      closed += 1;
+    }
+  }
+
+  if (closed > 0) {
+    await invalidateSearchCache();
+  }
+  return closed;
 }

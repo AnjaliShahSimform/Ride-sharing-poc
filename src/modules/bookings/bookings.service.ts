@@ -2,6 +2,7 @@ import { BookingStatus, Prisma } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
+import { hasDeparted, isCancellationWindowClosed } from "../../lib/rideTime";
 import { invalidateSearchCacheAfter } from "../../lib/searchCache";
 import { notifyBookingCancelled, notifyBookingCreated } from "../notifications/notify";
 
@@ -43,6 +44,9 @@ async function bookSeatTransaction(rideId: string, riderId: string) {
     }
     if (ride.status !== "SCHEDULED") {
       throw new ConflictError("This ride is not open for booking");
+    }
+    if (hasDeparted(ride.departureTime)) {
+      throw new ConflictError("This ride has already departed");
     }
 
     const result = await tx.ride.updateMany({
@@ -93,6 +97,11 @@ async function cancelBookingTransaction(actorId: string, bookingId: string) {
     }
     if (booking.riderId !== actorId && booking.ride.driverId !== actorId) {
       throw new ForbiddenError("Only the rider or the ride's driver can cancel this booking");
+    }
+    // Same cutoff as cancelling the ride itself: locked from the start of the
+    // ride's day (IST), for the rider and the driver alike.
+    if (isCancellationWindowClosed(booking.ride.departureTime)) {
+      throw new ConflictError("A booking can't be cancelled on or after the ride's day of departure");
     }
 
     // Lock the Ride row first, then the Booking row — the same order

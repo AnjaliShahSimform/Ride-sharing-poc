@@ -232,6 +232,34 @@ decides seat availability, so a stale entry can never cause an overbooking.
 - Cached hits go through JSON, so `Date`/`Decimal` fields come back as strings —
   identical to what `res.json()` sends, which is the only consumer.
 
+### Ride timing rules and the expiry job
+
+Rules live in `src/lib/rideTime.ts` (IST is a fixed UTC+5:30, no DST, rides are
+India-only) and are enforced in the service layer, returning 409:
+- **Cancel** a ride (`transitionRide`) or a booking (`cancelBooking`, rider *and*
+  driver) is blocked from 00:00 IST on the ride's departure date onward.
+- **Complete** a ride is blocked until `departureTime` has passed.
+- **Book** a seat (`bookSeat`) is blocked once the ride has departed.
+- Side effect to know about: a driver who can't make it on the day has no way
+  to cancel; a ride with confirmed riders is then auto-completed.
+
+`rides.service.ts`'s `closeExpiredRides` (run every 5 min, and once at startup,
+by `rides/rideExpiry.job.ts`) closes SCHEDULED rides that departed more than
+`AUTO_COMPLETE_AFTER_HOURS` (default 12) ago: with confirmed bookings →
+COMPLETED (riders get the completion email, audit reason `AUTO_COMPLETED`);
+with none → CANCELLED (audit reason `EXPIRED_NO_BOOKINGS`, no email). Audit
+actor is `"system"`. It takes each ride's row lock with `FOR UPDATE SKIP LOCKED`
+and re-checks the conditions under it, so several instances (or a driver acting
+at the same moment) can't double-process a ride; it's time-based, not a
+per-ride timer, so it catches up after downtime. The job is started by
+`src/background.ts` (shared with the notifications worker): inside the web
+process when `RUN_WORKER_IN_PROCESS=true`, or by `worker.ts`.
+- The frontend does not yet mirror these rules (buttons are not disabled
+  before they're allowed) — the API just returns the 409 message.
+- `tests/integration/rides.test.ts`'s "completes the driver's own scheduled
+  ride" test predates the departure rule (its ride departs in 2027); it needs
+  the ride's `departureTime` moved into the past to pass.
+
 ### Money and matching — two non-obvious data rules from the design spec
 
 - **Money is always `Decimal`, never `Float`**, end-to-end: `estimatedCost` is validated in `rides.schemas.ts` as a regex-checked *string* (`/^\d+(\.\d{1,2})?$/`), not coerced to a JS number, so it never passes through float arithmetic before reaching Prisma's `@db.Decimal(10, 2)` column.
