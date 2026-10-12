@@ -1,4 +1,19 @@
 import { z } from "zod";
+import { isWithinIndia } from "../../lib/indiaBounds";
+
+type Coordinates = { originLat: number; originLng: number; destLat: number; destLng: number };
+
+// Reports on the lat field so the 400's `details` names it, like every other
+// field error. Zod only runs this once the object's field types parsed, so the
+// values are always numbers here.
+function requireIndia(value: Coordinates, ctx: z.RefinementCtx) {
+  if (!isWithinIndia(value.originLat, value.originLng)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["originLat"], message: "Origin must be within India" });
+  }
+  if (!isWithinIndia(value.destLat, value.destLng)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["destLat"], message: "Destination must be within India" });
+  }
+}
 
 export const createRideSchema = z.object({
   originLat: z.number().min(-90).max(90),
@@ -17,7 +32,7 @@ export const createRideSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,2})?$/, "estimatedCost must be a decimal with up to 2 places")
     .refine((v) => Number(v) > 0, "estimatedCost must be positive"),
-});
+}).superRefine(requireIndia);
 
 export type CreateRideInput = z.infer<typeof createRideSchema>;
 
@@ -29,6 +44,6 @@ export const searchRidesQuerySchema = z.object({
   earliestDeparture: z.coerce.date(),
   latestDeparture: z.coerce.date(),
   radiusKm: z.coerce.number().positive().default(10),
-});
+}).superRefine(requireIndia);
 
 export type SearchRidesQuery = z.infer<typeof searchRidesQuerySchema>;

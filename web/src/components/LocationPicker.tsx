@@ -26,11 +26,12 @@ const DEBOUNCE_MS = 400;
 
 // OpenStreetMap's Nominatim — free, no API key, no signup. Usage policy asks
 // for a debounced query rate (roughly 1/sec), which a normal autocomplete
-// already satisfies. Called directly from the browser, not through apiFetch
+// already satisfies. `countrycodes=in` restricts suggestions to India (the
+// backend enforces the same limit). Called directly from the browser, not through apiFetch
 // (that helper is for this app's own backend and adds a CSRF header that
 // doesn't belong on a third-party GET).
 async function searchNominatim(query: string, signal: AbortSignal): Promise<NominatimResult[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=in&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal });
   if (!res.ok) {
     return [];
