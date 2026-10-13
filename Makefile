@@ -2,9 +2,9 @@
 
 help:
 	@echo "make install    - install backend + frontend dependencies"
-	@echo "make dev        - start Postgres, then the backend dev server (localhost:3000)"
+	@echo "make dev        - start Postgres/Redis/RabbitMQ/Mailpit, then the backend dev server (localhost:3000)"
 	@echo "make dev-web    - start the frontend dev server (localhost:5173)"
-	@echo "make down       - stop Postgres"
+	@echo "make down       - stop all local containers"
 	@echo "make migrate    - apply pending Prisma migrations"
 	@echo "make seed       - seed the database with sample drivers/riders/rides"
 	@echo "make studio     - open Prisma Studio (DB browser) on localhost:5555"
@@ -17,7 +17,7 @@ install:
 	cd web && npm install
 
 dev:
-	docker compose up -d db
+	docker compose up -d db redis rabbitmq mailpit
 	npm run dev
 
 dev-web:
