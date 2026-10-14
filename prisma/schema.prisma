@@ -29,6 +29,17 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum VehicleStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DocType {
+  RC
+  LICENCE
+}
+
 model User {
   id            String   @id @default(uuid())
   name          String
@@ -38,6 +49,7 @@ model User {
   roles         Role[]
   ridesAsDriver Ride[]
   bookings      Booking[]
+  vehicles      Vehicle[]
   createdAt     DateTime @default(now())
 }
 
@@ -58,6 +70,7 @@ model Ride {
   status         RideStatus @default(SCHEDULED)
   createdAt      DateTime   @default(now())
   bookings       Booking[]
+  vehicle        RideVehicle?
 
   @@index([departureTime])
   @@index([originLat, originLng])
@@ -107,4 +120,62 @@ model OutboxEvent {
   sentAt      DateTime?
 
   @@index([publishedAt, createdAt])
+}
+
+// A driver's vehicle. Rides can only be posted with an APPROVED one (when
+// REQUIRE_APPROVED_VEHICLE is on). `plateKey` is the uniqueness handle: it
+// equals `plateNumber` while the vehicle is PENDING/APPROVED and is NULL when
+// REJECTED (Postgres allows many NULLs under a unique index), so a rejected or
+// squatted registration doesn't lock the real owner out of the plate.
+model Vehicle {
+  id            String        @id @default(uuid())
+  ownerId       String
+  owner         User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  make          String
+  model         String
+  colour        String
+  plateNumber   String
+  plateKey      String?       @unique
+  seatCapacity  Int
+  status        VehicleStatus @default(PENDING)
+  rejectionNote String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  documents     VehicleDocument[]
+  rideLinks     RideVehicle[]
+
+  @@index([ownerId])
+  @@index([status, createdAt])
+}
+
+model VehicleDocument {
+  id         String   @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type       DocType
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  uploadedAt DateTime @default(now())
+
+  @@unique([vehicleId, type])
+}
+
+// Snapshot of the vehicle a ride was posted with — what riders booked against.
+// Deliberately a separate table, NOT columns on Ride: searchRides, getMyRides
+// and the admin rides list all call ride.findMany without a `select`, so any
+// column added to Ride would be returned to every searcher and stored in the
+// Redis search cache. Nothing returns this table unless a query `include`s it.
+model RideVehicle {
+  rideId    String  @id
+  ride      Ride    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  make      String
+  model     String
+  colour    String
+  plate     String
+
+  @@index([vehicleId])
 }

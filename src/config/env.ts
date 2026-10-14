@@ -74,6 +74,25 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === "true")),
+  // Verification gate. Unset means "on": a ride needs an APPROVED vehicle.
+  // vitest.config.ts sets "false" so the existing integration suite (which posts
+  // rides without a vehicle) keeps passing. Never turn this off in production —
+  // server.ts logs a loud warning if it is off.
+  REQUIRE_APPROVED_VEHICLE: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  // S3-compatible object storage for vehicle documents (MinIO locally; any S3
+  // API in production — no AWS account needed). All optional: the server boots
+  // without them and only the document endpoints answer 503. Uploads go to
+  // S3_ENDPOINT; signed download URLs are signed for S3_PUBLIC_ENDPOINT (the
+  // host the BROWSER can reach — inside docker the two differ).
+  S3_ENDPOINT: z.string().optional().transform((v) => v || undefined),
+  S3_PUBLIC_ENDPOINT: z.string().optional().transform((v) => v || undefined),
+  S3_BUCKET: z.string().optional().transform((v) => v || undefined),
+  S3_ACCESS_KEY: z.string().optional().transform((v) => v || undefined),
+  S3_SECRET_KEY: z.string().optional().transform((v) => v || undefined),
+  S3_REGION: z.string().min(1).default("us-east-1"),
   // How long after a ride's departure the background job closes it out (rides
   // have no end time): completed if it had confirmed riders, otherwise
   // cancelled as expired. Must stay > 0.
@@ -92,5 +111,6 @@ if (!parsed.success) {
 export const env = {
   ...parsed.data,
   NOTIFICATIONS_ENABLED: parsed.data.NOTIFICATIONS_ENABLED ?? true,
+  REQUIRE_APPROVED_VEHICLE: parsed.data.REQUIRE_APPROVED_VEHICLE ?? true,
   REDIS_URL: parsed.data.REDIS_ENABLED === false ? undefined : parsed.data.REDIS_URL,
 };

@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 export async function writeAuditLog(
   tx: Prisma.TransactionClient,
-  entityType: "Ride" | "Booking",
+  entityType: "Ride" | "Booking" | "Vehicle",
   entityId: string,
   action: string,
   actorId: string,

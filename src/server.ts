@@ -9,6 +9,10 @@ const server = app.listen(env.PORT, () => {
   logger.info(`Server listening on port ${env.PORT}`);
 });
 
+if (!env.REQUIRE_APPROVED_VEHICLE) {
+  logger.warn("REQUIRE_APPROVED_VEHICLE=false: rides can be posted without an approved vehicle");
+}
+
 if (env.RUN_WORKER_IN_PROCESS) {
   // A broker/SMTP problem must never take the API down, so failure to start
   // is logged, not fatal.
