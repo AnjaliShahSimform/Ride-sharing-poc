@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports. The `ADMIN` role, previously schema-only, is now wired to a read-only `src/modules/admin/` module (see "Admin module" below).
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports. The `ADMIN` role, previously schema-only, is now wired to a read-only `src/modules/admin/` module (see "Admin module" below). Vehicle verification (vehicles, RC/licence documents, admin review, vehicle linked to rides) is complete per [2026-10-14-vehicle-verification-design.md](docs/superpowers/specs/2026-10-14-vehicle-verification-design.md).
 
 ### Admin module
 
@@ -25,6 +25,47 @@ admin-only → `/admin/users`, driver-only → `/rides/mine`, everyone else
 `RiderOnly` in `main.tsx`) is rider-only, since only a `RIDER` can book; a
 driver who opens `/rides` is redirected home. The backend search endpoint itself
 stays open to any authenticated user.
+
+### Vehicles and admin verification
+
+`src/modules/vehicles/` (+ `GET/PATCH /api/admin/vehicles…`). A driver registers
+`Vehicle`s (plate normalised; `plateKey` is the unique handle, NULL when
+REJECTED so a rejected/squatted plate frees up), uploads an `RC` and `LICENCE`
+`VehicleDocument` (multipart, JPEG/PNG/PDF by magic bytes, ≤ 5 MB), and an admin
+approves/rejects. A ride is posted with a `vehicleId`; `createRide`/`editRide`
+check inside their transaction that it is the caller's, `APPROVED`, and
+`totalSeats <= seatCapacity`, then write a `RideVehicle` snapshot.
+
+- **The snapshot is a separate table on purpose.** `searchRides`, `getMyRides`
+  and the admin rides list call `ride.findMany` with no `select`, so any column
+  on `Ride` would leak to every searcher and into the Redis cache. Nothing may
+  `include: { vehicle }` in a query feeding `GET /api/rides/search`. Riders see
+  the vehicle only via `GET /api/bookings/mine` for `CONFIRMED` bookings.
+- **Lock order is Ride → Vehicle.** Every vehicle write (`lockVehicle`) takes
+  `SELECT … FOR UPDATE` on the vehicle row first, then reads status; vehicle
+  writes never lock a Ride or Booking, so no cycle with the Ride → Booking order.
+- **Edits reset approval:** changing make/model/plate/capacity on an APPROVED
+  vehicle, replacing a document on it, or touching a REJECTED one puts it back
+  to PENDING. Colour doesn't. Already-posted rides keep their snapshot.
+- **`REQUIRE_APPROVED_VEHICLE`** (default on) gates the requirement; only
+  `vitest.config.ts` sets it `false`, so the existing integration suite — which
+  posts rides without a vehicle — passes untouched. Never set it false in
+  production (the server logs a warning if it is). The verification-on path has
+  no automated tests (explicit decision, like Bookings).
+- **Documents** live in an S3-compatible private bucket via `src/lib/storage.ts`
+  (MinIO locally: `docker compose up -d minio`, console :9001). Reached only
+  through 60-second signed URLs (`GET /api/vehicles/:id/documents/:type`), each
+  issue audit-logged. `S3_ENDPOINT` (app → storage) and `S3_PUBLIC_ENDPOINT`
+  (what the browser can reach) differ inside docker. All `S3_*` vars are
+  optional: without them the server boots and only the document endpoints 503.
+  The compose `minio` service uses `cgr.dev/chainguard/minio` because
+  `minio/minio` is no longer published on Docker Hub.
+- Seeded drivers have APPROVED vehicles; Kiran also has a PENDING one for the
+  admin queue.
+- **Running a second checkout (e.g. a git worktree) next to the main one:**
+  `.env`'s `PORT`/`DATABASE_URL` beat the shell because `env.ts` loads dotenv
+  with `override: true`. Give it its own database (e.g. `ride_sharing_vv`),
+  since the integration suite's `resetDb()` wipes every user.
 
 ## Commands
 
@@ -225,7 +266,8 @@ decides seat availability, so a stale entry can never cause an overbooking.
   route, time or cost (or inserts a ride) must call
   `invalidateSearchCacheAfter`/`invalidateSearchCache`, or search will serve
   stale results for up to 60s. Bookings and ride writes done directly through
-  Prisma (seed scripts, admin SQL) bypass it for the same reason.
+  Prisma (seed scripts, admin SQL) bypass it for the same reason. Vehicle writes
+  don't change search results, so they don't call `invalidateSearchCache`.
 - Tradeoff: one global generation means any booking/ride change invalidates
   every cached search. Fine at POC traffic; the scale path is a generation per
   region.
@@ -319,3 +361,4 @@ sync with what actually happened.
 - `vitest.config.ts` sets `fileParallelism: false` because all integration test files share one database. Each integration file must clean up via the shared `resetDb()` helper in `tests/integration/testDb.ts`, which deletes rows in FK-safe order (children before parents) — extend that helper, not each test file's own `beforeEach`, whenever a new table gets a foreign key, or you'll get a cross-suite foreign-key-violation failure that only reproduces when the full suite runs in a particular order.
 - This codebase follows strict TDD: a failing test is written and run first, then the minimal implementation, then refactor. Follow the same discipline for new endpoints.
 - Exception: the Booking module deliberately skips this discipline — no automated tests were written for it beyond the one required concurrency test in `bookSeat`. This was a scoped, explicit decision for this module, not an oversight; see the Global Constraints section of [2026-10-09-booking-module.md](docs/superpowers/plans/2026-10-09-booking-module.md) for the reasoning.
+- Exception: vehicle verification adds no automated tests (see "Vehicles and admin verification"); `tests/integration/testDb.ts` needs no change because the new foreign keys cascade.
