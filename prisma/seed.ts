@@ -42,6 +42,36 @@ async function main() {
   // reference rides, so they have to go first.
   await prisma.booking.deleteMany({ where: { ride: { driverId: { in: seededDriverIds } } } });
   await prisma.ride.deleteMany({ where: { driverId: { in: seededDriverIds } } });
+  await prisma.vehicle.deleteMany({ where: { ownerId: { in: seededDriverIds } } });
+
+  // Seeded vehicles skip the document workflow (like the seed already skips
+  // signup): APPROVED so drivers can post rides straight away. Kiran also has a
+  // PENDING one so the admin review queue isn't empty — upload an RC and a
+  // licence for it through the UI to try the approval path.
+  const approvedVehicleByDriver = new Map<string, string>();
+  const approvedVehicles = [
+    { owner: dara, make: "Maruti", model: "Swift", colour: "White", plateNumber: "GJ01AB1234", seatCapacity: 4 },
+    { owner: ravi, make: "Hyundai", model: "Creta", colour: "Grey", plateNumber: "MH12CD5678", seatCapacity: 4 },
+    { owner: priya, make: "Honda", model: "City", colour: "Black", plateNumber: "KA03EF9012", seatCapacity: 4 },
+    { owner: kiran, make: "Toyota", model: "Innova", colour: "Silver", plateNumber: "DL8CAF3456", seatCapacity: 6 },
+  ];
+  for (const { owner, ...fields } of approvedVehicles) {
+    const vehicle = await prisma.vehicle.create({
+      data: { ownerId: owner.id, ...fields, plateKey: fields.plateNumber, status: "APPROVED", reviewedAt: new Date() },
+    });
+    approvedVehicleByDriver.set(owner.id, vehicle.id);
+  }
+  await prisma.vehicle.create({
+    data: {
+      ownerId: kiran.id,
+      make: "Tata",
+      model: "Nexon",
+      colour: "Blue",
+      plateNumber: "RJ14GH7890",
+      plateKey: "RJ14GH7890",
+      seatCapacity: 4,
+    },
+  });
 
   await prisma.ride.createMany({
     data: [
@@ -233,6 +263,27 @@ async function main() {
       },
     ],
   });
+
+  // Link the SCHEDULED rides to their driver's vehicle (cancelled/completed ones
+  // stay vehicle-less on purpose, so both UI states show).
+  for (const driver of [dara, ravi, priya, kiran]) {
+    const vehicleId = approvedVehicleByDriver.get(driver.id)!;
+    const vehicle = approvedVehicles.find((v) => v.owner.id === driver.id)!;
+    const scheduled = await prisma.ride.findMany({
+      where: { driverId: driver.id, status: RideStatus.SCHEDULED },
+      select: { id: true },
+    });
+    await prisma.rideVehicle.createMany({
+      data: scheduled.map((r) => ({
+        rideId: r.id,
+        vehicleId,
+        make: vehicle.make,
+        model: vehicle.model,
+        colour: vehicle.colour,
+        plate: vehicle.plateNumber,
+      })),
+    });
+  }
 
   // A ride whose seatsAvailable is below totalSeats is "partly booked" — back
   // that with real CONFIRMED bookings (one per taken seat), so the seat count
