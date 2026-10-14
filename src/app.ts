@@ -14,6 +14,7 @@ import { adminRouter } from "./modules/admin/admin.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { bookingsRouter } from "./modules/bookings/bookings.routes";
 import { ridesRouter } from "./modules/rides/rides.routes";
+import { vehiclesRouter } from "./modules/vehicles/vehicles.routes";
 import { logger } from "./lib/logger";
 
 export const app = express();
@@ -68,6 +69,7 @@ app.use(
 app.use("/api/auth", authRouter);
 app.use("/api/rides", ridesRouter);
 app.use("/api/bookings", bookingsRouter);
+app.use("/api/vehicles", vehiclesRouter);
 app.use("/api/admin", adminRouter);
 
 // No route matched anything above this line.

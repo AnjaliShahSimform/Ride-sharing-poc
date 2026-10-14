@@ -69,3 +69,5 @@ export const loginLimiter = createLimiter({
 export const signupLimiter = createLimiter({ name: "signup", windowMs: 60 * 60 * 1000, max: 5 });
 export const bookingLimiter = createLimiter({ name: "booking", windowMs: 60 * 1000, max: 10, key: "user" });
 export const searchLimiter = createLimiter({ name: "search", windowMs: 60 * 1000, max: 60, key: "user" });
+export const vehicleLimiter = createLimiter({ name: "vehicle", windowMs: 60 * 1000, max: 20, key: "user" });
+export const uploadLimiter = createLimiter({ name: "vehicleUpload", windowMs: 60 * 60 * 1000, max: 20, key: "user" });
