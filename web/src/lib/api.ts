@@ -39,7 +39,10 @@ function messageFromDetails(details: unknown): string | undefined {
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // A FormData body must NOT get a JSON Content-Type: the browser has to set
+  // multipart/form-data itself, boundary included.
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers: Record<string, string> = isForm ? {} : { "Content-Type": "application/json" };
   if (MUTATING_METHODS.has(method)) {
     headers[CSRF_HEADER_NAME] = CSRF_HEADER_VALUE;
   }
@@ -48,7 +51,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     method,
     headers,
     credentials: "include",
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body ? (isForm ? (options.body as FormData) : JSON.stringify(options.body)) : undefined,
   });
 
   const data = await res.json().catch(() => null);

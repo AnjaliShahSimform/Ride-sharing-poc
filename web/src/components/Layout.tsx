@@ -38,6 +38,11 @@ export function Layout() {
               My rides
             </Link>
           )}
+          {isDriver && (
+            <Link to="/vehicles/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+              My vehicles
+            </Link>
+          )}
           {isRider && (
             <Link to="/bookings/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
               My bookings

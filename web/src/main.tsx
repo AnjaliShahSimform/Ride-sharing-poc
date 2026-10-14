@@ -13,6 +13,7 @@ import { SearchRidesPage } from "./pages/SearchRidesPage";
 import { PostRidePage } from "./pages/PostRidePage";
 import { MyRidesPage } from "./pages/MyRidesPage";
 import { MyBookingsPage } from "./pages/MyBookingsPage";
+import { MyVehiclesPage } from "./pages/MyVehiclesPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminRidesPage } from "./pages/admin/AdminRidesPage";
 import { AdminAuditLogPage } from "./pages/admin/AdminAuditLogPage";
@@ -55,6 +56,7 @@ const router = createBrowserRouter([
       { path: "/rides/new", element: <PostRidePage /> },
       { path: "/rides/mine", element: <MyRidesPage /> },
       { path: "/bookings/mine", element: <MyBookingsPage /> },
+      { path: "/vehicles/mine", element: <MyVehiclesPage /> },
       { path: "/admin/users", element: <AdminUsersPage /> },
       { path: "/admin/rides", element: <AdminRidesPage /> },
       { path: "/admin/audit-logs", element: <AdminAuditLogPage /> },
