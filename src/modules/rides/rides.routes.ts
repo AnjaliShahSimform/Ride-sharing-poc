@@ -38,6 +38,7 @@ ridesRouter.use(requireAuth);
  *         seatsAvailable: { type: integer }
  *         estimatedCost: { type: string, description: "Decimal as a string, e.g. \"1200.00\" — never a float" }
  *         status: { type: string, enum: [SCHEDULED, CANCELLED, COMPLETED] }
+ *         vehicle: { type: object, nullable: true, description: "Snapshot (make, model, colour, plate). Only present on /api/rides/mine and admin lists — never on search." }
  */
 
 /**
@@ -53,7 +54,7 @@ ridesRouter.use(requireAuth);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost]
+ *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost, vehicleId]
  *             properties:
  *               originLat: { type: number, minimum: -90, maximum: 90 }
  *               originLng: { type: number, minimum: -180, maximum: 180 }
@@ -64,19 +65,22 @@ ridesRouter.use(requireAuth);
  *               departureTime: { type: string, format: date-time, description: "Must be in the future" }
  *               totalSeats: { type: integer, minimum: 1 }
  *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$', description: "Decimal string, e.g. \"1200.00\"" }
+ *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; totalSeats must not exceed its capacity" }
  *     responses:
  *       201: { description: Ride created, content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
  *       400: { description: "Bad input (past departureTime, totalSeats <= 0)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       403: { description: Caller isn't a DRIVER, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       403: { description: "Caller isn't a DRIVER, or the vehicle belongs to someone else", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: Vehicle not approved, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(createRideHandler));
+ridesRouter.post("/",requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(createRideHandler));
 
 /**
  * @swagger
  * /api/rides/search:
  *   get:
  *     summary: Search for rides matching a route and time window
- *     description: A real indexed bounding-box query on both origin and destination, ANDed with a time-window range — not an in-memory filter. Never includes driver contact fields.
+ *     description: A real indexed bounding-box query on both origin and destination, ANDed with a time-window range — not an in-memory filter. Never includes driver contact or vehicle fields.
  *     tags: [Rides]
  *     security: [{ cookieAuth: [] }]
  *     parameters:
@@ -126,7 +130,7 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  *         application/json:
  *           schema:
  *             type: object
- *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost]
+ *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost, vehicleId]
  *             properties:
  *               originLat: { type: number, minimum: -90, maximum: 90 }
  *               originLng: { type: number, minimum: -180, maximum: 180 }
@@ -137,6 +141,7 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  *               departureTime: { type: string, format: date-time, description: "Must be in the future" }
  *               totalSeats: { type: integer, minimum: 1 }
  *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$' }
+ *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; totalSeats must not exceed its capacity" }
  *     responses:
  *       200: { description: Ride updated, content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
  *       400: { description: "Bad input (past departureTime, totalSeats <= 0)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }

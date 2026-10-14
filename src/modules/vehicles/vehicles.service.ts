@@ -1,6 +1,6 @@
 import { Prisma, VehicleStatus } from "@prisma/client";
 import type { DocType, Vehicle } from "@prisma/client";
-import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
 import type { CreateVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
@@ -117,4 +117,31 @@ export async function updateVehicle(ownerId: string, vehicleId: string, input: U
     }
     throw err;
   }
+}
+
+// Called by rides.service inside the ride's own transaction (createRide / editRide).
+// Takes the vehicle row lock, then re-checks everything under it, so a driver
+// editing the vehicle (-> PENDING) or an admin review at the same moment can't
+// let a ride slip through against a vehicle that just left APPROVED.
+export async function assertVehicleCanServeRide(
+  tx: Prisma.TransactionClient,
+  driverId: string,
+  vehicleId: string,
+  totalSeats: number,
+) {
+  await lockVehicle(tx, vehicleId);
+  const vehicle = await tx.vehicle.findUnique({ where: { id: vehicleId } });
+  if (!vehicle) {
+    throw new NotFoundError("Vehicle not found");
+  }
+  if (vehicle.ownerId !== driverId) {
+    throw new ForbiddenError("You can only post rides with your own vehicles");
+  }
+  if (vehicle.status !== VehicleStatus.APPROVED) {
+    throw new ConflictError("This vehicle isn't approved yet");
+  }
+  if (totalSeats > vehicle.seatCapacity) {
+    throw new ValidationError(`totalSeats can't exceed this vehicle's capacity of ${vehicle.seatCapacity}`);
+  }
+  return vehicle;
 }

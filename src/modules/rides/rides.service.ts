@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma";
 import { hasDeparted, isCancellationWindowClosed } from "../../lib/rideTime";
 import { invalidateSearchCache, invalidateSearchCacheAfter, withSearchCache } from "../../lib/searchCache";
 import { notifyRideTransition } from "../notifications/notify";
+import { assertVehicleCanServeRide } from "../vehicles/vehicles.service";
 import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 
 // Rough km-per-degree-latitude; degrees-of-longitude shrink toward the poles,
@@ -13,8 +14,24 @@ import type { CreateRideInput, SearchRidesQuery } from "./rides.schemas";
 // box at POC scale — see design spec §4 for the PostGIS upgrade path.
 const KM_PER_DEGREE_LAT = 111;
 
+// What riders booked against; later edits to the Vehicle never change it.
+function vehicleSnapshot(vehicle: { id: string; make: string; model: string; colour: string; plateNumber: string }) {
+  return {
+    vehicleId: vehicle.id,
+    make: vehicle.make,
+    model: vehicle.model,
+    colour: vehicle.colour,
+    plate: vehicle.plateNumber,
+  };
+}
+
 async function createRideTransaction(driverId: string, input: CreateRideInput) {
   return prisma.$transaction(async (tx) => {
+    // Vehicle first: the lock taken inside the check holds off a concurrent
+    // vehicle edit/review until this ride (and its snapshot) is committed.
+    const vehicle = input.vehicleId
+      ? await assertVehicleCanServeRide(tx, driverId, input.vehicleId, input.totalSeats)
+      : null;
     const ride = await tx.ride.create({
       data: {
         driverId,
@@ -32,7 +49,10 @@ async function createRideTransaction(driverId: string, input: CreateRideInput) {
         estimatedCost: input.estimatedCost,
       },
     });
-    await writeAuditLog(tx, "Ride", ride.id, "CREATED", driverId);
+    if (vehicle) {
+      await tx.rideVehicle.create({ data: { rideId: ride.id, ...vehicleSnapshot(vehicle) } });
+    }
+    await writeAuditLog(tx, "Ride", ride.id, "CREATED", driverId, vehicle ? { vehicleId: vehicle.id } : undefined);
     return ride;
   });
 }
@@ -65,6 +85,8 @@ async function findMatchingRides(query: SearchRidesQuery) {
 
   // Bounding box on origin AND destination, ANDed with an indexed time-window
   // overlap — an index range scan, not an in-memory filter (design spec §4).
+  // No `include`/`select` on purpose: vehicle data lives in RideVehicle and must
+  // never reach search results (or the Redis cache that stores them).
   return prisma.ride.findMany({
     where: {
       status: "SCHEDULED",
@@ -82,6 +104,7 @@ async function findMatchingRides(query: SearchRidesQuery) {
 export async function getMyRides(driverId: string) {
   return prisma.ride.findMany({
     where: { driverId },
+    include: { vehicle: true },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -135,8 +158,18 @@ async function editRideTransaction(driverId: string, rideId: string, input: Crea
       throw new ConflictError("Cannot edit a ride with confirmed bookings — cancel and repost instead");
     }
 
+    if (input.vehicleId) {
+      const vehicle = await assertVehicleCanServeRide(tx, driverId, input.vehicleId, input.totalSeats);
+      const snapshot = vehicleSnapshot(vehicle);
+      await tx.rideVehicle.upsert({
+        where: { rideId },
+        create: { rideId, ...snapshot },
+        update: snapshot,
+      });
+    }
+
     const updated = await tx.ride.findUniqueOrThrow({ where: { id: rideId } });
-    await writeAuditLog(tx, "Ride", rideId, "UPDATED", driverId);
+    await writeAuditLog(tx, "Ride", rideId, "UPDATED", driverId, input.vehicleId ? { vehicleId: input.vehicleId } : undefined);
     return updated;
   });
 }

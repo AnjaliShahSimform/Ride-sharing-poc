@@ -11,7 +11,7 @@ export async function getAllUsers() {
 export async function getAllRides() {
   return prisma.ride.findMany({
     orderBy: { createdAt: "desc" },
-    include: { driver: { select: { id: true, name: true, email: true } } },
+    include: { driver: { select: { id: true, name: true, email: true } }, vehicle: true },
   });
 }
 

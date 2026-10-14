@@ -156,7 +156,7 @@ export function cancelBooking(actorId: string, bookingId: string) {
 export async function getMyBookings(riderId: string) {
   const bookings = await prisma.booking.findMany({
     where: { riderId },
-    include: { ride: { include: { driver: true } } },
+    include: { ride: { include: { driver: true, vehicle: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -174,6 +174,17 @@ export async function getMyBookings(riderId: string) {
     },
     driverContact:
       b.status === BookingStatus.CONFIRMED ? { name: b.ride.driver.name, phone: b.ride.driver.phone } : null,
+    // Same rule as the driver's contact: only for a CONFIRMED booking, never for
+    // a cancelled one.
+    vehicle:
+      b.status === BookingStatus.CONFIRMED && b.ride.vehicle
+        ? {
+            make: b.ride.vehicle.make,
+            model: b.ride.vehicle.model,
+            colour: b.ride.vehicle.colour,
+            plate: b.ride.vehicle.plate,
+          }
+        : null,
   }));
 }
 

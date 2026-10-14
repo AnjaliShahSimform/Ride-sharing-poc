@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { env } from "../../config/env";
 import { isWithinIndia } from "../../lib/indiaBounds";
 
 type Coordinates = { originLat: number; originLng: number; destLat: number; destLng: number };
@@ -14,6 +15,8 @@ function requireIndia(value: Coordinates, ctx: z.RefinementCtx) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["destLat"], message: "Destination must be within India" });
   }
 }
+
+const vehicleId = z.string().uuid("vehicleId must be a valid id");
 
 export const createRideSchema = z.object({
   originLat: z.number().min(-90).max(90),
@@ -32,6 +35,8 @@ export const createRideSchema = z.object({
     .string()
     .regex(/^\d+(\.\d{1,2})?$/, "estimatedCost must be a decimal with up to 2 places")
     .refine((v) => Number(v) > 0, "estimatedCost must be positive"),
+  // Required unless REQUIRE_APPROVED_VEHICLE=false (test suite only).
+  vehicleId: env.REQUIRE_APPROVED_VEHICLE ? vehicleId : vehicleId.optional(),
 }).superRefine(requireIndia);
 
 export type CreateRideInput = z.infer<typeof createRideSchema>;
