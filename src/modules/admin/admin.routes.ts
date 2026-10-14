@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
-import { validateQuery } from "../../middleware/validate";
+import { validateBody, validateQuery } from "../../middleware/validate";
+import { listVehiclesForReviewHandler, reviewVehicleHandler } from "../vehicles/vehicles.controller";
+import { reviewQuerySchema, reviewVehicleSchema } from "../vehicles/vehicles.schemas";
 import { getAllRidesHandler, getAllUsersHandler, getAuditLogsHandler } from "./admin.controller";
 import { auditLogQuerySchema } from "./admin.schemas";
 
@@ -61,7 +63,7 @@ adminRouter.get("/rides", asyncHandler(getAllRidesHandler));
  *                     type: object
  *                     properties:
  *                       id: { type: string, format: uuid }
- *                       entityType: { type: string, enum: [Ride, Booking] }
+ *                       entityType: { type: string, enum: [Ride, Booking, Vehicle] }
  *                       entityId: { type: string, format: uuid }
  *                       action: { type: string }
  *                       actorId: { type: string }
@@ -73,3 +75,47 @@ adminRouter.get("/rides", asyncHandler(getAllRidesHandler));
  *       403: { description: Caller isn't an ADMIN, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 adminRouter.get("/audit-logs", validateQuery(auditLogQuerySchema), asyncHandler(getAuditLogsHandler));
+
+/**
+ * @swagger
+ * /api/admin/vehicles:
+ *   get:
+ *     summary: Vehicle review queue (admin only), oldest first
+ *     description: Defaults to PENDING. Each vehicle includes its owner ({ id, name, email }) and which documents are uploaded. View a document through GET /api/vehicles/{id}/documents/{type}.
+ *     tags: [Admin]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters:
+ *       - { in: query, name: status, required: false, schema: { type: string, enum: [PENDING, APPROVED, REJECTED], default: PENDING } }
+ *     responses:
+ *       200: { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Vehicle' } } } } }
+ *       403: { description: Caller isn't an ADMIN, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+adminRouter.get("/vehicles", validateQuery(reviewQuerySchema), asyncHandler(listVehiclesForReviewHandler));
+
+/**
+ * @swagger
+ * /api/admin/vehicles/{id}/review:
+ *   patch:
+ *     summary: Approve or reject a PENDING vehicle (admin only)
+ *     description: Approval needs both RC and LICENCE uploaded (409 otherwise). Rejection needs a note and frees the plate. Only a PENDING vehicle can be reviewed (409 otherwise, including when another admin decided first). An admin can't review their own vehicle (403). The owner is emailed.
+ *     tags: [Admin]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [decision]
+ *             properties:
+ *               decision: { type: string, enum: [APPROVED, REJECTED] }
+ *               note: { type: string, maxLength: 500, description: "Required when REJECTED" }
+ *     responses:
+ *       200: { content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+ *       400: { description: Invalid decision or missing rejection note, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       403: { description: Not an admin, or reviewing own vehicle, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Not PENDING, or documents missing", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+adminRouter.patch("/vehicles/:id/review", validateBody(reviewVehicleSchema), asyncHandler(reviewVehicleHandler));

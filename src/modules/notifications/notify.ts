@@ -1,4 +1,4 @@
-import type { Prisma, Ride, User } from "@prisma/client";
+import type { Prisma, Ride, User, Vehicle } from "@prisma/client";
 import { enqueueEmail } from "../../lib/outbox";
 import type { RideSummary } from "./templates";
 
@@ -64,4 +64,18 @@ export async function notifyRideTransition(
       ride: rideSummary(args.ride),
     });
   }
+}
+
+// To the vehicle's owner only, at their own address.
+export async function notifyVehicleReviewed(
+  tx: Prisma.TransactionClient,
+  args: { vehicle: Vehicle; owner: User; decision: "APPROVED" | "REJECTED"; note?: string },
+) {
+  const { vehicle, owner, decision, note } = args;
+  await enqueueEmail(tx, "VEHICLE_REVIEWED", owner.email, {
+    ownerName: owner.name,
+    vehicle: `${vehicle.colour} ${vehicle.make} ${vehicle.model} (${vehicle.plateNumber})`,
+    decision,
+    note,
+  });
 }

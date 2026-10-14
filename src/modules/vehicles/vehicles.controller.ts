@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { docTypeSchema } from "./vehicles.schemas";
+import type { ReviewQuery } from "./vehicles.schemas";
 import * as vehiclesService from "./vehicles.service";
 
 export async function createVehicleHandler(req: Request, res: Response) {
@@ -28,4 +29,15 @@ export async function getDocumentUrlHandler(req: Request, res: Response) {
   const type = docTypeSchema.parse(req.params.type);
   const result = await vehiclesService.getDocumentUrl(req.user!, req.params.id, type);
   res.status(200).json(result);
+}
+
+export async function listVehiclesForReviewHandler(req: Request, res: Response) {
+  const { status } = req.query as unknown as ReviewQuery;
+  const vehicles = await vehiclesService.listVehiclesForReview(status);
+  res.status(200).json(vehicles);
+}
+
+export async function reviewVehicleHandler(req: Request, res: Response) {
+  const vehicle = await vehiclesService.reviewVehicle(req.user!.sub, req.params.id, req.body);
+  res.status(200).json(vehicle);
 }

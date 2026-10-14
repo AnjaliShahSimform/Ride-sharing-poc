@@ -37,6 +37,13 @@ export interface TemplateVars {
   RIDE_CANCELLED: { riderName: string; driverName: string; ride: RideSummary };
   // To every rider who had a CONFIRMED booking when the driver completed.
   RIDE_COMPLETED: { riderName: string; driverName: string; ride: RideSummary };
+  // To the driver whose vehicle an admin just approved or rejected.
+  VEHICLE_REVIEWED: {
+    ownerName: string;
+    vehicle: string; // e.g. "White Maruti Swift (MH12AB1234)"
+    decision: "APPROVED" | "REJECTED";
+    note?: string;
+  };
 }
 
 export type TemplateName = keyof TemplateVars;
@@ -106,6 +113,16 @@ const renderers: { [T in TemplateName]: (vars: TemplateVars[T]) => RenderedEmail
     compose("Your ride is complete", v.riderName, [
       `${v.driverName} marked ${rideLine(v.ride)} as completed. Thanks for riding!`,
     ]),
+  VEHICLE_REVIEWED: (v) =>
+    v.decision === "APPROVED"
+      ? compose("Your vehicle was approved", v.ownerName, [
+          `${v.vehicle} is approved. You can now post rides with it.`,
+        ])
+      : compose("Your vehicle was not approved", v.ownerName, [
+          `${v.vehicle} was not approved.`,
+          ...(v.note ? [`Reason: ${v.note}`] : []),
+          "Fix the issue and re-upload your documents to resubmit it.",
+        ]),
 };
 
 // `name` and `vars` arrive from a queue, so they're untyped at runtime.

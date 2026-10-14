@@ -6,7 +6,8 @@ import { writeAuditLog } from "../../lib/auditLog";
 import { sniffDocumentType } from "../../lib/fileType";
 import { prisma } from "../../lib/prisma";
 import * as storage from "../../lib/storage";
-import type { CreateVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
+import { notifyVehicleReviewed } from "../notifications/notify";
+import type { CreateVehicleInput, ReviewVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
 
 // Selecting only type + uploadedAt keeps `storageKey` out of every response.
 export const DOC_SELECT = { select: { type: true, uploadedAt: true } } as const;
@@ -253,4 +254,64 @@ export async function getDocumentUrl(
   );
   const url = await storage.getSignedDownloadUrl(doc.storageKey, doc.mimeType, 60);
   return { url, expiresInSeconds: 60 };
+}
+
+// Oldest first, so the queue is worked in submission order. The plate is NOT
+// masked: the review is a comparison of the declared plate against the RC.
+export async function listVehiclesForReview(status: VehicleStatus) {
+  const vehicles = await prisma.vehicle.findMany({
+    where: { status },
+    include: { documents: DOC_SELECT, owner: { select: { id: true, name: true, email: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return vehicles.map((v) => ({ ...vehicleView(v), owner: v.owner }));
+}
+
+export async function reviewVehicle(adminId: string, vehicleId: string, input: ReviewVehicleInput) {
+  return prisma.$transaction(async (tx) => {
+    // Same lock as every vehicle write: two admins (or an admin and the driver
+    // re-uploading) serialise here; the loser sees a non-PENDING status -> 409.
+    await lockVehicle(tx, vehicleId);
+    const vehicle = await tx.vehicle.findUnique({
+      where: { id: vehicleId },
+      include: { owner: true, documents: DOC_SELECT },
+    });
+    if (!vehicle) {
+      throw new NotFoundError("Vehicle not found");
+    }
+    if (vehicle.ownerId === adminId) {
+      throw new ForbiddenError("You can't review your own vehicle");
+    }
+    if (vehicle.status !== VehicleStatus.PENDING) {
+      throw new ConflictError(`Vehicle is already ${vehicle.status.toLowerCase()}`);
+    }
+    if (input.decision === "APPROVED") {
+      const uploaded = new Set(vehicle.documents.map((d) => d.type));
+      if (!uploaded.has("RC") || !uploaded.has("LICENCE")) {
+        throw new ConflictError("Both RC and licence documents must be uploaded before approval");
+      }
+    }
+
+    const rejected = input.decision === "REJECTED";
+    const updated = await tx.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        status: input.decision,
+        rejectionNote: rejected ? (input.note ?? null) : null,
+        reviewedById: adminId,
+        reviewedAt: new Date(),
+        // Rejection frees the plate; approval keeps (already holds) it.
+        plateKey: rejected ? null : vehicle.plateNumber,
+      },
+      include: { documents: DOC_SELECT },
+    });
+    await writeAuditLog(tx, "Vehicle", vehicleId, input.decision, adminId, { note: input.note });
+    await notifyVehicleReviewed(tx, {
+      vehicle: updated,
+      owner: vehicle.owner,
+      decision: input.decision,
+      note: input.note,
+    });
+    return vehicleView(updated);
+  });
 }
