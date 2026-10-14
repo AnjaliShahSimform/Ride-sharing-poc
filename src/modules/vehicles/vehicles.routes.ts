@@ -1,10 +1,17 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
-import { vehicleLimiter } from "../../middleware/rateLimit";
+import { uploadLimiter, vehicleLimiter } from "../../middleware/rateLimit";
 import { validateBody } from "../../middleware/validate";
-import { createVehicleHandler, getMyVehiclesHandler, updateVehicleHandler } from "./vehicles.controller";
+import {
+  createVehicleHandler,
+  getDocumentUrlHandler,
+  getMyVehiclesHandler,
+  updateVehicleHandler,
+  uploadDocumentHandler,
+} from "./vehicles.controller";
 import { createVehicleSchema, updateVehicleSchema } from "./vehicles.schemas";
+import { uploadSingleFile } from "./vehicles.upload";
 
 export const vehiclesRouter = Router();
 
@@ -107,3 +114,50 @@ vehiclesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyVehiclesHan
  *       409: { description: Plate already registered, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 vehiclesRouter.patch("/:id", requireRole("DRIVER"), vehicleLimiter, validateBody(updateVehicleSchema), asyncHandler(updateVehicleHandler));
+
+/**
+ * @swagger
+ * /api/vehicles/{id}/documents:
+ *   post:
+ *     summary: Upload an RC or LICENCE document (driver, owner only)
+ *     description: multipart/form-data with `type` (RC or LICENCE) and `file` (JPEG, PNG or PDF, max 5 MB; the type is checked from the file's bytes, not its name). Replaces any previous document of that type. Uploading to an APPROVED or REJECTED vehicle puts it back to PENDING.
+ *     tags: [Vehicles]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [type, file]
+ *             properties:
+ *               type: { type: string, enum: [RC, LICENCE] }
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201: { content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+ *       400: { description: "Missing/oversized/disguised file or bad type", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       403: { description: Not the owner, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       503: { description: Document storage not configured, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+vehiclesRouter.post("/:id/documents", requireRole("DRIVER"), uploadLimiter, uploadSingleFile, asyncHandler(uploadDocumentHandler));
+
+/**
+ * @swagger
+ * /api/vehicles/{id}/documents/{type}:
+ *   get:
+ *     summary: Get a 60-second signed download URL for a document (owner or admin)
+ *     description: Every call is written to the audit log. The link forces a download.
+ *     tags: [Vehicles]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+ *       - { in: path, name: type, required: true, schema: { type: string, enum: [RC, LICENCE] } }
+ *     responses:
+ *       200: { content: { application/json: { schema: { type: object, properties: { url: { type: string }, expiresInSeconds: { type: integer } } } } } }
+ *       403: { description: Neither owner nor admin, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       404: { description: Vehicle or document not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       503: { description: Document storage not configured, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+vehiclesRouter.get("/:id/documents/:type", requireRole("DRIVER", "ADMIN"), asyncHandler(getDocumentUrlHandler));

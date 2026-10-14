@@ -49,6 +49,21 @@ services:
       # restart/cold start). Free tiers: Upstash or Redis Cloud (rediss:// URL).
       - key: REDIS_URL
         sync: false
+      # Private object storage for vehicle documents (RC / licence): any
+      # S3-compatible host, e.g. Supabase Storage free tier (no card). The
+      # bucket must be private; files are only served via 60s signed URLs.
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_PUBLIC_ENDPOINT
+        sync: false # the host browsers can reach; usually the same as S3_ENDPOINT
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
   - type: web
     name: ride-sharing-poc-web
     runtime: static

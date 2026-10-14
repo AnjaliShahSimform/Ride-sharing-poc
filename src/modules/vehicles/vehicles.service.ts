@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Prisma, VehicleStatus } from "@prisma/client";
 import type { DocType, Vehicle } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
+import { sniffDocumentType } from "../../lib/fileType";
 import { prisma } from "../../lib/prisma";
+import * as storage from "../../lib/storage";
 import type { CreateVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
 
 // Selecting only type + uploadedAt keeps `storageKey` out of every response.
@@ -144,4 +147,110 @@ export async function assertVehicleCanServeRide(
     throw new ValidationError(`totalSeats can't exceed this vehicle's capacity of ${vehicle.seatCapacity}`);
   }
   return vehicle;
+}
+
+export async function uploadDocument(
+  ownerId: string,
+  vehicleId: string,
+  type: DocType,
+  file: { buffer: Buffer } | undefined,
+) {
+  if (!file) {
+    throw new ValidationError("A file is required in the 'file' field");
+  }
+  const mimeType = sniffDocumentType(file.buffer);
+  if (!mimeType) {
+    throw new ValidationError("Only JPEG, PNG or PDF files are allowed");
+  }
+
+  // Cheap ownership check BEFORE anything is stored, so a non-owner can't make
+  // us write objects. Re-checked under the lock below.
+  const existing = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+  if (!existing) {
+    throw new NotFoundError("Vehicle not found");
+  }
+  if (existing.ownerId !== ownerId) {
+    throw new ForbiddenError("Only the owner can upload documents for this vehicle");
+  }
+
+  // Order: store the new object, then write the row, then delete the old object.
+  // A failure leaves at worst an orphan object, never a row pointing at nothing.
+  const storageKey = `vehicles/${vehicleId}/${type}/${randomUUID()}`;
+  await storage.putObject(storageKey, file.buffer, mimeType);
+
+  let previousKey: string | undefined;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockVehicle(tx, vehicleId);
+      const vehicle = await tx.vehicle.findUnique({ where: { id: vehicleId } });
+      if (!vehicle || vehicle.ownerId !== ownerId) {
+        throw new NotFoundError("Vehicle not found");
+      }
+      const old = await tx.vehicleDocument.findUnique({ where: { vehicleId_type: { vehicleId, type } } });
+      previousKey = old?.storageKey;
+
+      await tx.vehicleDocument.upsert({
+        where: { vehicleId_type: { vehicleId, type } },
+        create: { vehicleId, type, storageKey, mimeType, sizeBytes: file.buffer.length },
+        update: { storageKey, mimeType, sizeBytes: file.buffer.length, uploadedAt: new Date() },
+      });
+
+      // Replacing a document on an approved vehicle, or uploading to a rejected
+      // one, puts it back in the review queue (and re-claims the plate).
+      const resubmit = vehicle.status !== VehicleStatus.PENDING;
+      if (resubmit) {
+        await tx.vehicle.update({
+          where: { id: vehicleId },
+          data: {
+            status: VehicleStatus.PENDING,
+            plateKey: vehicle.plateNumber,
+            rejectionNote: null,
+            reviewedById: null,
+            reviewedAt: null,
+          },
+        });
+      }
+      await writeAuditLog(tx, "Vehicle", vehicleId, "DOCUMENT_UPLOADED", ownerId, { type, resubmitted: resubmit });
+      return tx.vehicle.findUniqueOrThrow({ where: { id: vehicleId }, include: { documents: DOC_SELECT } });
+    });
+    if (previousKey) {
+      await storage.deleteObject(previousKey);
+    }
+    return vehicleView(result);
+  } catch (err) {
+    await storage.deleteObject(storageKey);
+    if (isPlateClash(err)) {
+      throw new ConflictError(PLATE_TAKEN);
+    }
+    throw err;
+  }
+}
+
+// Only the owner or an admin may get a link, and the AuditLog row is written
+// BEFORE the URL is issued, so there is a record of every document view.
+export async function getDocumentUrl(
+  actor: { sub: string; roles: string[] },
+  vehicleId: string,
+  type: DocType,
+) {
+  const vehicle = await prisma.vehicle.findUnique({
+    where: { id: vehicleId },
+    include: { documents: { where: { type } } },
+  });
+  if (!vehicle) {
+    throw new NotFoundError("Vehicle not found");
+  }
+  if (vehicle.ownerId !== actor.sub && !actor.roles.includes("ADMIN")) {
+    throw new ForbiddenError("Not allowed to view this document");
+  }
+  const doc = vehicle.documents[0];
+  if (!doc) {
+    throw new NotFoundError("Document not uploaded");
+  }
+
+  await prisma.$transaction((tx) =>
+    writeAuditLog(tx, "Vehicle", vehicleId, "DOCUMENT_VIEWED", actor.sub, { type }),
+  );
+  const url = await storage.getSignedDownloadUrl(doc.storageKey, doc.mimeType, 60);
+  return { url, expiresInSeconds: 60 };
 }
