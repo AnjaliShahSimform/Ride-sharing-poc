@@ -34,9 +34,8 @@ export const vehicleStatusBadgeClass: Record<VehicleStatus, string> = {
   REJECTED: "bg-red-100 text-red-700",
 };
 
-// Opens a short-lived signed URL in a new tab. The link is fetched on click
-// because it expires after 60 seconds.
+// Fetches a 60-second signed URL on click and navigates to it; the URL forces Content-Disposition: attachment, so it downloads without a popup (window.open after an await can be blocked) or leaving the page.
 export async function openDocument(apiFetch: <T>(path: string) => Promise<T>, vehicleId: string, type: DocType) {
   const { url } = await apiFetch<{ url: string }>(`/api/vehicles/${vehicleId}/documents/${type}`);
-  window.open(url, "_blank", "noopener");
+  window.location.assign(url);
 }

@@ -81,7 +81,7 @@ adminRouter.get("/audit-logs", validateQuery(auditLogQuerySchema), asyncHandler(
  * /api/admin/vehicles:
  *   get:
  *     summary: Vehicle review queue (admin only), oldest first
- *     description: Defaults to PENDING. Each vehicle includes its owner ({ id, name, email }) and which documents are uploaded. View a document through GET /api/vehicles/{id}/documents/{type}.
+ *     description: Defaults to PENDING. Each vehicle includes its owner ({ id, name, email }) and which documents are uploaded, plus a `reviewVersion` string (a fingerprint of the details and documents as listed) to send back when reviewing. View a document through GET /api/vehicles/{id}/documents/{type}.
  *     tags: [Admin]
  *     security: [{ cookieAuth: [] }]
  *     parameters:
@@ -97,7 +97,7 @@ adminRouter.get("/vehicles", validateQuery(reviewQuerySchema), asyncHandler(list
  * /api/admin/vehicles/{id}/review:
  *   patch:
  *     summary: Approve or reject a PENDING vehicle (admin only)
- *     description: Approval needs both RC and LICENCE uploaded (409 otherwise). Rejection needs a note and frees the plate. Only a PENDING vehicle can be reviewed (409 otherwise, including when another admin decided first). An admin can't review their own vehicle (403). The owner is emailed.
+ *     description: Approval needs both RC and LICENCE uploaded (409 otherwise). Rejection needs a note and frees the plate. Only a PENDING vehicle can be reviewed (409 otherwise, including when another admin decided first). An admin can't review their own vehicle (403). The owner is emailed. Copy the `reviewVersion` from GET /api/admin/vehicles; the review is rejected with 409 if the vehicle's details or documents changed since.
  *     tags: [Admin]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
@@ -107,15 +107,16 @@ adminRouter.get("/vehicles", validateQuery(reviewQuerySchema), asyncHandler(list
  *         application/json:
  *           schema:
  *             type: object
- *             required: [decision]
+ *             required: [decision, reviewVersion]
  *             properties:
  *               decision: { type: string, enum: [APPROVED, REJECTED] }
+ *               reviewVersion: { type: string, description: "From GET /api/admin/vehicles; pins the review to the details and documents the admin saw" }
  *               note: { type: string, maxLength: 500, description: "Required when REJECTED" }
  *     responses:
  *       200: { content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
- *       400: { description: Invalid decision or missing rejection note, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       400: { description: Invalid decision, missing reviewVersion or missing rejection note, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       403: { description: Not an admin, or reviewing own vehicle, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
- *       409: { description: "Not PENDING, or documents missing", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: "Not PENDING, documents missing, or the vehicle's details/documents changed since reviewVersion was issued", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 adminRouter.patch("/vehicles/:id/review", validateBody(reviewVehicleSchema), asyncHandler(reviewVehicleHandler));

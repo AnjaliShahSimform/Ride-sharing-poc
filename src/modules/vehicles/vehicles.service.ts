@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma, VehicleStatus } from "@prisma/client";
 import type { DocType, Vehicle } from "@prisma/client";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/AppError";
@@ -29,6 +29,20 @@ export function vehicleView(v: VehicleWithDocs) {
     createdAt: v.createdAt,
     documents: v.documents.map((d) => ({ type: d.type, uploadedAt: d.uploadedAt })),
   };
+}
+
+// Fingerprint of exactly what an admin reviews: the declared details and the
+// current documents (by upload time). Colour is cosmetic and left out, matching
+// SENSITIVE_FIELDS. The review request must echo it, so an approval can't land on
+// details or documents the admin never saw.
+export function reviewVersion(v: Pick<Vehicle, "make" | "model" | "plateNumber" | "seatCapacity"> & {
+  documents: { type: DocType; uploadedAt: Date }[];
+}): string {
+  const docs = [...v.documents]
+    .sort((a, b) => a.type.localeCompare(b.type))
+    .map((d) => `${d.type}:${d.uploadedAt.toISOString()}`);
+  const raw = [`${v.make}|${v.model}|${v.plateNumber}|${v.seatCapacity}`, ...docs].join("\n");
+  return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 
 // Every vehicle write takes this row lock FIRST and only then reads the current
@@ -264,7 +278,7 @@ export async function listVehiclesForReview(status: VehicleStatus) {
     include: { documents: DOC_SELECT, owner: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
-  return vehicles.map((v) => ({ ...vehicleView(v), owner: v.owner }));
+  return vehicles.map((v) => ({ ...vehicleView(v), reviewVersion: reviewVersion(v), owner: v.owner }));
 }
 
 export async function reviewVehicle(adminId: string, vehicleId: string, input: ReviewVehicleInput) {
@@ -284,6 +298,11 @@ export async function reviewVehicle(adminId: string, vehicleId: string, input: R
     }
     if (vehicle.status !== VehicleStatus.PENDING) {
       throw new ConflictError(`Vehicle is already ${vehicle.status.toLowerCase()}`);
+    }
+    // Under the lock: if the driver edited details or swapped a document after
+    // the admin loaded the queue, the admin hasn't seen what is being decided on.
+    if (reviewVersion(vehicle) !== input.reviewVersion) {
+      throw new ConflictError("This vehicle changed since you loaded it — reload the queue and review it again");
     }
     if (input.decision === "APPROVED") {
       const uploaded = new Set(vehicle.documents.map((d) => d.type));

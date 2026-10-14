@@ -41,9 +41,17 @@ check inside their transaction that it is the caller's, `APPROVED`, and
   on `Ride` would leak to every searcher and into the Redis cache. Nothing may
   `include: { vehicle }` in a query feeding `GET /api/rides/search`. Riders see
   the vehicle only via `GET /api/bookings/mine` for `CONFIRMED` bookings.
-- **Lock order is Ride → Vehicle.** Every vehicle write (`lockVehicle`) takes
+- **Lock order is Ride → Vehicle.** Every write to an existing vehicle
+  (`lockVehicle`; `createVehicle` has nothing to lock) takes
   `SELECT … FOR UPDATE` on the vehicle row first, then reads status; vehicle
   writes never lock a Ride or Booking, so no cycle with the Ride → Booking order.
+  `createRide` takes the vehicle lock before inserting its new Ride, which
+  cannot form a cycle.
+- **The review request is pinned to what the admin saw.** The queue returns a
+  `reviewVersion` per vehicle (hash of make/model/plate/capacity + each
+  document's type and upload time); `PATCH …/review` must echo it and it is
+  recomputed under the lock, a mismatch being a 409. This closes approving a
+  vehicle whose capacity/plate/documents changed after the admin looked.
 - **Edits reset approval:** changing make/model/plate/capacity on an APPROVED
   vehicle, replacing a document on it, or touching a REJECTED one puts it back
   to PENDING. Colour doesn't. Already-posted rides keep their snapshot.
@@ -361,4 +369,4 @@ sync with what actually happened.
 - `vitest.config.ts` sets `fileParallelism: false` because all integration test files share one database. Each integration file must clean up via the shared `resetDb()` helper in `tests/integration/testDb.ts`, which deletes rows in FK-safe order (children before parents) — extend that helper, not each test file's own `beforeEach`, whenever a new table gets a foreign key, or you'll get a cross-suite foreign-key-violation failure that only reproduces when the full suite runs in a particular order.
 - This codebase follows strict TDD: a failing test is written and run first, then the minimal implementation, then refactor. Follow the same discipline for new endpoints.
 - Exception: the Booking module deliberately skips this discipline — no automated tests were written for it beyond the one required concurrency test in `bookSeat`. This was a scoped, explicit decision for this module, not an oversight; see the Global Constraints section of [2026-10-09-booking-module.md](docs/superpowers/plans/2026-10-09-booking-module.md) for the reasoning.
-- Exception: vehicle verification adds no automated tests (see "Vehicles and admin verification"); `tests/integration/testDb.ts` needs no change because the new foreign keys cascade.
+- Exception: vehicle verification adds no automated tests (see "Vehicles and admin verification"); `tests/integration/testDb.ts` needs no change because `resetDb()` deletes rides before users — `RideVehicle.ride`, `Vehicle.owner` and `VehicleDocument.vehicle` cascade, while `RideVehicle.vehicle` is RESTRICT (safe only because rides go first).

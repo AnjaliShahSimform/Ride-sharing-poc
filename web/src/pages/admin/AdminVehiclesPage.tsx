@@ -3,13 +3,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../../lib/api";
 import { DOC_LABEL, type DocType, type Vehicle, openDocument } from "../../lib/vehicleTypes";
 
-type ReviewVehicle = Vehicle & { owner: { id: string; name: string; email: string } };
+type ReviewVehicle = Vehicle & { reviewVersion: string; owner: { id: string; name: string; email: string } };
 
 export function AdminVehiclesPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   // Per-vehicle rejection note being typed.
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Vehicle whose review request is in flight; blocks a second click.
+  const [reviewing, setReviewing] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery<ReviewVehicle[]>({
     queryKey: ["admin", "vehicles"],
@@ -18,16 +20,25 @@ export function AdminVehiclesPage() {
 
   const message = (err: unknown) => (err instanceof ApiError ? err.message : "Something went wrong");
 
-  async function review(vehicleId: string, decision: "APPROVED" | "REJECTED") {
+  async function review(v: ReviewVehicle, decision: "APPROVED" | "REJECTED") {
+    if (reviewing === v.id) return;
     setError(null);
+    setReviewing(v.id);
     try {
-      await apiFetch(`/api/admin/vehicles/${vehicleId}/review`, {
+      await apiFetch(`/api/admin/vehicles/${v.id}/review`, {
         method: "PATCH",
-        body: { decision, ...(decision === "REJECTED" && { note: notes[vehicleId] ?? "" }) },
+        body: {
+          decision,
+          reviewVersion: v.reviewVersion,
+          ...(decision === "REJECTED" && { note: notes[v.id] ?? "" }),
+        },
       });
-      await queryClient.refetchQueries({ queryKey: ["admin", "vehicles"] });
     } catch (err) {
       setError(message(err));
+    } finally {
+      // Refresh even after a failure, so a stale card (e.g. after a 409) doesn't linger.
+      await queryClient.refetchQueries({ queryKey: ["admin", "vehicles"] });
+      setReviewing(null);
     }
   }
 
@@ -90,8 +101,8 @@ export function AdminVehiclesPage() {
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  disabled={!hasBoth}
-                  onClick={() => review(v.id, "APPROVED")}
+                  disabled={!hasBoth || reviewing === v.id}
+                  onClick={() => review(v, "APPROVED")}
                   className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 >
                   Approve
@@ -105,8 +116,8 @@ export function AdminVehiclesPage() {
                 />
                 <button
                   type="button"
-                  disabled={!(notes[v.id] ?? "").trim()}
-                  onClick={() => review(v.id, "REJECTED")}
+                  disabled={!(notes[v.id] ?? "").trim() || reviewing === v.id}
+                  onClick={() => review(v, "REJECTED")}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
                   Reject

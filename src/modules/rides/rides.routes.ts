@@ -73,7 +73,7 @@ ridesRouter.use(requireAuth);
  *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: Vehicle not approved, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-ridesRouter.post("/",requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(createRideHandler));
+ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(createRideHandler));
 
 /**
  * @swagger

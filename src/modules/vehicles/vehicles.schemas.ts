@@ -34,6 +34,8 @@ export const docTypeSchema = z.enum(["RC", "LICENCE"]);
 export const reviewVehicleSchema = z
   .object({
     decision: z.enum(["APPROVED", "REJECTED"]),
+    // Echoed from the review queue; pins the review to the submission the admin saw.
+    reviewVersion: z.string().min(1),
     note: z.string().trim().max(500, "note must be at most 500 characters").optional(),
   })
   .refine((v) => v.decision !== "REJECTED" || Boolean(v.note), {

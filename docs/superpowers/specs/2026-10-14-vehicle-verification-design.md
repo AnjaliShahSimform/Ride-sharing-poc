@@ -254,6 +254,11 @@ alternatives) through env vars only.
   address.
 - A review is refused with 409 if the vehicle isn't `PENDING` or lacks a
   document, and with 403 if the admin owns the vehicle.
+- The review request carries the `reviewVersion` of what the admin loaded (a hash
+  of make/model/plate/capacity and each document's type + upload time, returned
+  by the queue). It is recomputed under the lock and a mismatch is a 409, so an
+  admin can't approve a vehicle whose capacity, plate or documents changed after
+  they looked. Colour is excluded, as it is for approval resets.
 
 ## 7. Seed data
 
