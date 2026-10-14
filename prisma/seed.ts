@@ -147,7 +147,9 @@ interface RideSpec {
   to: Place;
   day: number;
   hour: number;
-  seats: number;
+  // Only for a ride without a vehicle: a ride with one always has the vehicle's
+  // seat capacity, exactly as the API sets it.
+  seats?: number;
   cost: string;
   status: RideStatus;
   postedDaysBefore: number;
@@ -161,44 +163,44 @@ interface RideSpec {
 
 const RIDE_SPECS: RideSpec[] = [
   // --- Dara (Swift, 4 seats) — Ahmedabad hub: one of every status. ---
-  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: MUMBAI, day: 3, hour: 7, seats: 3, cost: "1200.00", status: RideStatus.SCHEDULED, postedDaysBefore: 6 },
-  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: MUMBAI, day: 10, hour: 9, seats: 2, cost: "1350.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rina", state: "CONFIRMED" }] },
-  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: VADODARA, day: -2, hour: 8, seats: 4, cost: "450.00", status: RideStatus.COMPLETED, postedDaysBefore: 8, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }] },
-  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: SURAT, day: 5, hour: 6, seats: 3, cost: "600.00", status: RideStatus.CANCELLED, postedDaysBefore: 7, bookings: [{ rider: "arjun", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }] },
+  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: MUMBAI, day: 3, hour: 7, cost: "1200.00", status: RideStatus.SCHEDULED, postedDaysBefore: 6 },
+  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: MUMBAI, day: 10, hour: 9, cost: "1350.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rina", state: "CONFIRMED" }] },
+  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: VADODARA, day: -2, hour: 8, cost: "450.00", status: RideStatus.COMPLETED, postedDaysBefore: 8, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }] },
+  { driver: "dara", vehicle: "swift", from: AHMEDABAD, to: SURAT, day: 5, hour: 6, cost: "600.00", status: RideStatus.CANCELLED, postedDaysBefore: 7, bookings: [{ rider: "arjun", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }] },
   { driver: "dara", from: AHMEDABAD, to: SURAT, day: -20, hour: 7, seats: 3, cost: "500.00", status: RideStatus.COMPLETED, postedDaysBefore: 5, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "sam", state: "CONFIRMED" }] },
 
   // --- Ravi (Creta, 4 seats) — long-haul north/south. ---
-  { driver: "ravi", vehicle: "creta", from: DELHI, to: JAIPUR, day: 4, hour: 6, seats: 4, cost: "900.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5 },
-  { driver: "ravi", vehicle: "creta", from: DELHI, to: JAIPUR, day: 4, hour: 18, seats: 3, cost: "950.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
-  { driver: "ravi", vehicle: "creta", from: BANGALORE, to: CHENNAI, day: 6, hour: 5, seats: 2, cost: "800.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "karan", state: "CONFIRMED" }, { rider: "isha", state: "RIDER_CANCELLED" }] },
-  { driver: "ravi", vehicle: "creta", from: DELHI, to: CHANDIGARH, day: -3, hour: 6, seats: 4, cost: "700.00", status: RideStatus.COMPLETED, postedDaysBefore: 9, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
+  { driver: "ravi", vehicle: "creta", from: DELHI, to: JAIPUR, day: 4, hour: 6, cost: "900.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5 },
+  { driver: "ravi", vehicle: "creta", from: DELHI, to: JAIPUR, day: 4, hour: 18, cost: "950.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
+  { driver: "ravi", vehicle: "creta", from: BANGALORE, to: CHENNAI, day: 6, hour: 5, cost: "800.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "karan", state: "CONFIRMED" }, { rider: "isha", state: "RIDER_CANCELLED" }] },
+  { driver: "ravi", vehicle: "creta", from: DELHI, to: CHANDIGARH, day: -3, hour: 6, cost: "700.00", status: RideStatus.COMPLETED, postedDaysBefore: 9, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
 
   // --- Priya (City, 4 seats) — Pune / Hyderabad. ---
-  { driver: "priya", vehicle: "city", from: PUNE, to: HYDERABAD, day: 2, hour: 22, seats: 4, cost: "1100.00", status: RideStatus.SCHEDULED, postedDaysBefore: 6, bookings: [{ rider: "neha", state: "CONFIRMED" }, { rider: "arjun", state: "RIDER_CANCELLED" }] },
-  { driver: "priya", vehicle: "city", from: PUNE, to: MUMBAI, day: 1, hour: 7, seats: 3, cost: "350.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }] },
-  { driver: "priya", vehicle: "city", from: HYDERABAD, to: BANGALORE, day: 8, hour: 6, seats: 4, cost: "1050.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, edited: true },
-  { driver: "priya", vehicle: "city", from: PUNE, to: MUMBAI, day: -9, hour: 7, seats: 3, cost: "350.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, closedBySystem: true, bookings: [{ rider: "isha", state: "CONFIRMED" }, { rider: "karan", state: "CONFIRMED" }] },
+  { driver: "priya", vehicle: "city", from: PUNE, to: HYDERABAD, day: 2, hour: 22, cost: "1100.00", status: RideStatus.SCHEDULED, postedDaysBefore: 6, bookings: [{ rider: "neha", state: "CONFIRMED" }, { rider: "arjun", state: "RIDER_CANCELLED" }] },
+  { driver: "priya", vehicle: "city", from: PUNE, to: MUMBAI, day: 1, hour: 7, cost: "350.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }] },
+  { driver: "priya", vehicle: "city", from: HYDERABAD, to: BANGALORE, day: 8, hour: 6, cost: "1050.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, edited: true },
+  { driver: "priya", vehicle: "city", from: PUNE, to: MUMBAI, day: -9, hour: 7, cost: "350.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, closedBySystem: true, bookings: [{ rider: "isha", state: "CONFIRMED" }, { rider: "karan", state: "CONFIRMED" }] },
 
   // --- Kiran (Innova, 6 seats) — east coast / Kerala. ---
-  { driver: "kiran", vehicle: "innova", from: KOLKATA, to: BHUBANESWAR, day: 7, hour: 6, seats: 3, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "arjun", state: "CONFIRMED" }] },
-  { driver: "kiran", vehicle: "innova", from: KOCHI, to: BANGALORE, day: 9, hour: 20, seats: 4, cost: "950.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4 },
-  { driver: "kiran", vehicle: "innova", from: KOCHI, to: THIRUVANANTHAPURAM, day: -5, hour: 9, seats: 3, cost: "400.00", status: RideStatus.COMPLETED, postedDaysBefore: 7, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
-  { driver: "kiran", vehicle: "innova", from: KOCHI, to: THIRUVANANTHAPURAM, day: 12, hour: 6, seats: 6, cost: "500.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "karan", state: "CONFIRMED" }] },
+  { driver: "kiran", vehicle: "innova", from: KOLKATA, to: BHUBANESWAR, day: 7, hour: 6, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 5, bookings: [{ rider: "arjun", state: "CONFIRMED" }] },
+  { driver: "kiran", vehicle: "innova", from: KOCHI, to: BANGALORE, day: 9, hour: 20, cost: "950.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4 },
+  { driver: "kiran", vehicle: "innova", from: KOCHI, to: THIRUVANANTHAPURAM, day: -5, hour: 9, cost: "400.00", status: RideStatus.COMPLETED, postedDaysBefore: 7, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
+  { driver: "kiran", vehicle: "innova", from: KOCHI, to: THIRUVANANTHAPURAM, day: 12, hour: 6, cost: "500.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "neha", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "karan", state: "CONFIRMED" }] },
 
   // --- Meera (Punch 4 seats, XUV700 6 seats) — Tamil Nadu; two approved vehicles. ---
-  { driver: "meera", vehicle: "punch", from: CHENNAI, to: COIMBATORE, day: 3, hour: 6, seats: 3, cost: "650.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rohan", state: "CONFIRMED" }] },
-  { driver: "meera", vehicle: "xuv", from: CHENNAI, to: COIMBATORE, day: 11, hour: 7, seats: 5, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "aditi", state: "CONFIRMED" }, { rider: "arjun", state: "CONFIRMED" }] },
-  { driver: "meera", vehicle: "punch", from: BANGALORE, to: CHENNAI, day: -1, hour: 6, seats: 4, cost: "800.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "karan", state: "CONFIRMED" }, { rider: "tanvi", state: "RIDER_CANCELLED" }] },
-  { driver: "meera", vehicle: "punch", from: COIMBATORE, to: CHENNAI, day: -2, hour: 9, seats: 3, cost: "650.00", status: RideStatus.CANCELLED, postedDaysBefore: 5, closedBySystem: true },
+  { driver: "meera", vehicle: "punch", from: CHENNAI, to: COIMBATORE, day: 3, hour: 6, cost: "650.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rohan", state: "CONFIRMED" }] },
+  { driver: "meera", vehicle: "xuv", from: CHENNAI, to: COIMBATORE, day: 11, hour: 7, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "aditi", state: "CONFIRMED" }, { rider: "arjun", state: "CONFIRMED" }] },
+  { driver: "meera", vehicle: "punch", from: BANGALORE, to: CHENNAI, day: -1, hour: 6, cost: "800.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "karan", state: "CONFIRMED" }, { rider: "tanvi", state: "RIDER_CANCELLED" }] },
+  { driver: "meera", vehicle: "punch", from: COIMBATORE, to: CHENNAI, day: -2, hour: 9, cost: "650.00", status: RideStatus.CANCELLED, postedDaysBefore: 5, closedBySystem: true },
 
   // --- Vikram (Seltos, 4 seats) — Uttar Pradesh; his Ertiga was rejected. ---
-  { driver: "vikram", vehicle: "seltos", from: LUCKNOW, to: KANPUR, day: 2, hour: 8, seats: 3, cost: "300.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "karan", state: "RIDER_CANCELLED" }] },
-  { driver: "vikram", vehicle: "seltos", from: LUCKNOW, to: DELHI, day: 14, hour: 5, seats: 4, cost: "1500.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3 },
-  { driver: "vikram", vehicle: "seltos", from: DELHI, to: LUCKNOW, day: -4, hour: 5, seats: 4, cost: "1400.00", status: RideStatus.CANCELLED, postedDaysBefore: 8, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }] },
+  { driver: "vikram", vehicle: "seltos", from: LUCKNOW, to: KANPUR, day: 2, hour: 8, cost: "300.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rina", state: "CONFIRMED" }, { rider: "rohan", state: "CONFIRMED" }, { rider: "karan", state: "RIDER_CANCELLED" }] },
+  { driver: "vikram", vehicle: "seltos", from: LUCKNOW, to: DELHI, day: 14, hour: 5, cost: "1500.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3 },
+  { driver: "vikram", vehicle: "seltos", from: DELHI, to: LUCKNOW, day: -4, hour: 5, cost: "1400.00", status: RideStatus.CANCELLED, postedDaysBefore: 8, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }] },
 
   // --- Aditi (i20, 4 seats) — DRIVER + RIDER; her Kiger is still pending. ---
-  { driver: "aditi", vehicle: "i20", from: INDORE, to: BHOPAL, day: 5, hour: 7, seats: 3, cost: "400.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "neha", state: "CONFIRMED" }] },
-  { driver: "aditi", vehicle: "i20", from: BHOPAL, to: INDORE, day: -6, hour: 7, seats: 3, cost: "400.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "arjun", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
+  { driver: "aditi", vehicle: "i20", from: INDORE, to: BHOPAL, day: 5, hour: 7, cost: "400.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "neha", state: "CONFIRMED" }] },
+  { driver: "aditi", vehicle: "i20", from: BHOPAL, to: INDORE, day: -6, hour: 7, cost: "400.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "arjun", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -226,9 +228,11 @@ function simulateRide(spec: RideSpec, ids: Record<UserKey, string>, vehicleIds: 
     // itself would refuse: own vehicle, APPROVED, and enough seats.
     if (vehicleDef.owner !== spec.driver) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: ${spec.vehicle} is not ${spec.driver}'s vehicle`);
     if (vehicleDef.status !== "APPROVED") throw new Error(`Ride ${spec.from.label}->${spec.to.label}: ${spec.vehicle} is not APPROVED`);
-    if (spec.seats > vehicleDef.seatCapacity) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: ${spec.seats} seats exceed ${spec.vehicle}'s capacity`);
+    if (spec.seats !== undefined) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: seats come from the vehicle, drop "seats"`);
   }
-  if (bookingSpecs.length > spec.seats) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: more bookings than seats`);
+  const totalSeats = vehicleDef ? vehicleDef.seatCapacity : spec.seats;
+  if (totalSeats === undefined) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: a ride without a vehicle needs "seats"`);
+  if (bookingSpecs.length > totalSeats) throw new Error(`Ride ${spec.from.label}->${spec.to.label}: more bookings than seats`);
   if (spec.closedBySystem && spec.status === RideStatus.COMPLETED && bookingSpecs.length === 0) throw new Error("A system-completed ride needs confirmed riders");
   if (spec.closedBySystem && spec.status === RideStatus.CANCELLED && bookingSpecs.length > 0) throw new Error("A system-expired ride has no bookings");
   for (const b of bookingSpecs) {
@@ -296,7 +300,7 @@ function simulateRide(spec: RideSpec, ids: Record<UserKey, string>, vehicleIds: 
   // Seats taken = CONFIRMED bookings at this point. A rider's cancellation gave
   // its seat back; a driver cancelling the ride below does not (seatsAvailable
   // is left as it was, like the real transition).
-  const seatsAvailable = spec.seats - confirmed.size;
+  const seatsAvailable = totalSeats - confirmed.size;
 
   if (spec.status === RideStatus.COMPLETED) {
     if (spec.closedBySystem) {
@@ -329,7 +333,7 @@ function simulateRide(spec: RideSpec, ids: Record<UserKey, string>, vehicleIds: 
     destLat: spec.to.lat,
     destLng: spec.to.lng,
     departureTime: departure,
-    totalSeats: spec.seats,
+    totalSeats,
     seatsAvailable,
     estimatedCost: cost,
     status: spec.status,

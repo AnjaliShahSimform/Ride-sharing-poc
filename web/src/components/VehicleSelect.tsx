@@ -5,15 +5,16 @@ import type { Vehicle } from "../lib/vehicleTypes";
 
 interface VehicleSelectProps {
   value: string;
-  onChange: (vehicleId: string) => void;
-  // Vehicles too small for the seats being offered are disabled.
-  seatsNeeded?: number;
+  // The chosen vehicle is passed along (undefined when the placeholder is
+  // picked) so the form can show the seat count the vehicle fixes.
+  onChange: (vehicleId: string, vehicle?: Vehicle) => void;
   className?: string;
 }
 
 // Dropdown of the driver's APPROVED vehicles only. The server re-checks
-// ownership, approval and capacity on submit; this is just the friendly path.
-export function VehicleSelect({ value, onChange, seatsNeeded = 1, className }: VehicleSelectProps) {
+// ownership and approval on submit and fixes the ride's seats to the vehicle's
+// capacity; this is just the friendly path.
+export function VehicleSelect({ value, onChange, className }: VehicleSelectProps) {
   const { data, isLoading } = useQuery<Vehicle[]>({
     queryKey: ["vehicles", "mine"],
     queryFn: () => apiFetch("/api/vehicles/mine"),
@@ -34,10 +35,15 @@ export function VehicleSelect({ value, onChange, seatsNeeded = 1, className }: V
   }
 
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} required className={className}>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value, approved.find((v) => v.id === e.target.value))}
+      required
+      className={className}
+    >
       <option value="">Select a vehicle</option>
       {approved.map((v) => (
-        <option key={v.id} value={v.id} disabled={seatsNeeded > v.seatCapacity}>
+        <option key={v.id} value={v.id}>
           {v.colour} {v.make} {v.model} · {v.plateNumber} ({v.seatCapacity} seats)
         </option>
       ))}

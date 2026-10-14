@@ -1,8 +1,10 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
+import { FareHint } from "../components/FareHint";
 import { LocationPicker, type LocationValue } from "../components/LocationPicker";
 import { VehicleSelect } from "../components/VehicleSelect";
+import type { Vehicle } from "../lib/vehicleTypes";
 
 const emptyLocation: LocationValue = { label: "", lat: "", lng: "" };
 
@@ -10,9 +12,10 @@ export function PostRidePage() {
   const [origin, setOrigin] = useState<LocationValue>(emptyLocation);
   const [dest, setDest] = useState<LocationValue>(emptyLocation);
   const [departureTime, setDepartureTime] = useState("");
-  const [totalSeats, setTotalSeats] = useState("1");
   const [estimatedCost, setEstimatedCost] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  // The seats are the chosen vehicle's capacity, so there is no seats field.
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -55,7 +58,6 @@ export function PostRidePage() {
           destLat: Number(dest.lat),
           destLng: Number(dest.lng),
           departureTime: new Date(departureTime).toISOString(),
-          totalSeats: Number(totalSeats),
           estimatedCost,
           ...(vehicleId && { vehicleId }),
         },
@@ -96,8 +98,10 @@ export function PostRidePage() {
           Vehicle
           <VehicleSelect
             value={vehicleId}
-            onChange={setVehicleId}
-            seatsNeeded={Number(totalSeats) || 1}
+            onChange={(id, selected) => {
+              setVehicleId(id);
+              setVehicle(selected ?? null);
+            }}
             className={inputClass}
           />
         </label>
@@ -112,25 +116,18 @@ export function PostRidePage() {
           />
         </label>
         <div className="grid grid-cols-2 gap-4">
+          <div className={labelClass}>
+            Seats
+            <p className="mt-1 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {vehicle ? `${vehicle.seatCapacity} (set by your vehicle)` : "Choose a vehicle"}
+            </p>
+          </div>
           <label className={labelClass}>
-            Total seats
-            <input
-              type="number"
-              min="1"
-              value={totalSeats}
-              onChange={(e) => {
-                setTotalSeats(e.target.value);
-                setVehicleId("");
-              }}
-              required
-              className={inputClass}
-            />
-          </label>
-          <label className={labelClass}>
-            Estimated cost (₹)
+            Estimated total cost (₹)
             <input value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} required className={inputClass} />
           </label>
         </div>
+        <FareHint originLat={origin.lat} originLng={origin.lng} destLat={dest.lat} destLng={dest.lng} fare={estimatedCost} />
       </div>
       <button
         type="submit"

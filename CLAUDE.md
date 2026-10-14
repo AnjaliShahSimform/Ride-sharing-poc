@@ -33,8 +33,22 @@ stays open to any authenticated user.
 REJECTED so a rejected/squatted plate frees up), uploads an `RC` and `LICENCE`
 `VehicleDocument` (multipart, JPEG/PNG/PDF by magic bytes, ≤ 5 MB), and an admin
 approves/rejects. A ride is posted with a `vehicleId`; `createRide`/`editRide`
-check inside their transaction that it is the caller's, `APPROVED`, and
-`totalSeats <= seatCapacity`, then write a `RideVehicle` snapshot.
+check inside their transaction that it is the caller's and `APPROVED`, set the
+ride's seats to the vehicle's `seatCapacity` (the seat count is **fixed by the
+vehicle**: a client-sent `totalSeats` is optional and must equal it, else 400;
+`seatsFor()` in `rides.service.ts`; switching vehicle on edit switches the
+seats), then write a `RideVehicle` snapshot. Only a ride with no vehicle — the
+verification flag off, i.e. the test suite — still takes `totalSeats` from the
+caller. On edit the seats are written *after* the vehicle check so the lock
+order stays Ride -> Vehicle.
+
+**Fare check.** `estimatedCost` is the *total* trip cost (split among confirmed
+riders) and must be plausible for the route: ₹1–₹10 per km of straight-line
+distance (haversine), never below ₹10 or above ₹50,000, a short hop up to ₹200
+(`src/lib/fare.ts`, enforced in `createRideSchema` on create and edit; the 400
+names the allowed range). `web/src/lib/fare.ts` repeats the numbers to show the
+suggested range in the forms (`FareHint`) — the two packages share no imports, so
+change both. The seed script's fares all sit inside the band.
 
 - **The snapshot is a separate table on purpose.** `searchRides`, `getMyRides`
   and the admin rides list call `ride.findMany` with no `select`, so any column

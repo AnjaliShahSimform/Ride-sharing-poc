@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { LocationPicker, type LocationValue } from "../components/LocationPicker";
+import { fareLabel } from "../lib/fare";
 
 interface RideResult {
   id: string;
@@ -178,9 +179,9 @@ export function SearchRidesPage() {
                       {ride.originLabel} → {ride.destLabel}
                     </p>
                     <p className="mt-1 text-sm text-gray-500">
-                      {new Date(ride.departureTime).toLocaleString()} · {ride.seatsAvailable}/{ride.totalSeats} seats · ₹
-                      {ride.estimatedCost}
+                      {new Date(ride.departureTime).toLocaleString()} · {ride.seatsAvailable}/{ride.totalSeats} seats
                     </p>
+                    <p className="mt-0.5 text-sm text-gray-700">{fareLabel(ride.estimatedCost, ride.totalSeats)}</p>
                   </div>
                   {isRider && (
                     <button

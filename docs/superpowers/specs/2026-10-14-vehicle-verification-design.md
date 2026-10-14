@@ -106,9 +106,16 @@ existing drivers.
   vehicle resets it to `PENDING`. Editing colour does not. Re-uploading a
   document on an `APPROVED` vehicle also resets it to `PENDING` (otherwise a
   driver could swap a document after approval).
-- **Seat capacity.** Capacity is validated 1..8. A ride requires
-  `totalSeats <= seatCapacity`. Changing a vehicle's capacity never touches
-  rides already posted.
+- **Seat capacity.** Capacity is validated 1..8. *Amended after delivery:* a
+  ride's seats are **fixed by its vehicle** — the service sets `totalSeats` to
+  `seatCapacity`, a client-sent `totalSeats` is optional and must equal it (400
+  otherwise), and switching vehicle on edit switches the seats. (The original
+  rule was `totalSeats <= seatCapacity`.) Changing a vehicle's capacity never
+  touches rides already posted.
+- **Fare plausibility.** *Added after delivery:* `estimatedCost` (the total trip
+  cost) must fall within ₹1–₹10 per km of straight-line route distance, never
+  below ₹10 or above ₹50,000, with short hops allowed up to ₹200 — see
+  `src/lib/fare.ts`.
 - **Posting.** `createRide`/`editRide` check inside the service: the vehicle
   belongs to the caller (IDOR), is `APPROVED`, and the seat rule holds, then
   write the `RideVehicle` snapshot in the same transaction.

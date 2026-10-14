@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { apiFetch, ApiError } from "../lib/api";
+import { FareHint } from "./FareHint";
 import { VehicleSelect } from "./VehicleSelect";
 
 export interface EditableRide {
@@ -38,9 +39,11 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
   const [destLat, setDestLat] = useState(String(ride.destLat));
   const [destLng, setDestLng] = useState(String(ride.destLng));
   const [departureTime, setDepartureTime] = useState(toDatetimeLocalValue(ride.departureTime));
-  const [totalSeats, setTotalSeats] = useState(String(ride.totalSeats));
   const [estimatedCost, setEstimatedCost] = useState(ride.estimatedCost);
   const [vehicleId, setVehicleId] = useState(ride.vehicle?.vehicleId ?? "");
+  // The seats are the vehicle's capacity: the ride's current count until another
+  // vehicle is chosen, then that vehicle's.
+  const [seats, setSeats] = useState(ride.totalSeats);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -59,9 +62,10 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
           destLat: Number(destLat),
           destLng: Number(destLng),
           departureTime: new Date(departureTime).toISOString(),
-          totalSeats: Number(totalSeats),
           estimatedCost,
-          ...(vehicleId && { vehicleId }),
+          // With a vehicle the server sets the seats; without one (only while the
+          // vehicle requirement is off) it needs the existing count.
+          ...(vehicleId ? { vehicleId } : { totalSeats: ride.totalSeats }),
         },
       });
       onSaved();
@@ -114,8 +118,10 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
         Vehicle
         <VehicleSelect
           value={vehicleId}
-          onChange={setVehicleId}
-          seatsNeeded={Number(totalSeats) || 1}
+          onChange={(id, selected) => {
+            setVehicleId(id);
+            setSeats(selected ? selected.seatCapacity : ride.totalSeats);
+          }}
           className={inputClass}
         />
       </label>
@@ -130,22 +136,16 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
         />
       </label>
       <div className="grid grid-cols-2 gap-3">
+        <div className={labelClass}>
+          Seats
+          <p className="mt-1 rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-700">{seats} (set by the vehicle)</p>
+        </div>
         <label className={labelClass}>
-          Total seats
-          <input
-            type="number"
-            min="1"
-            value={totalSeats}
-            onChange={(e) => setTotalSeats(e.target.value)}
-            required
-            className={inputClass}
-          />
-        </label>
-        <label className={labelClass}>
-          Estimated cost (₹)
+          Estimated total cost (₹)
           <input value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} required className={inputClass} />
         </label>
       </div>
+      <FareHint originLat={originLat} originLng={originLng} destLat={destLat} destLng={destLng} fare={estimatedCost} />
       <div className="flex gap-2">
         <button
           type="submit"

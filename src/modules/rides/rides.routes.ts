@@ -54,7 +54,7 @@ ridesRouter.use(requireAuth);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost, vehicleId]
+ *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, estimatedCost, vehicleId]
  *             properties:
  *               originLat: { type: number, minimum: -90, maximum: 90 }
  *               originLng: { type: number, minimum: -180, maximum: 180 }
@@ -63,12 +63,12 @@ ridesRouter.use(requireAuth);
  *               originLabel: { type: string }
  *               destLabel: { type: string }
  *               departureTime: { type: string, format: date-time, description: "Must be in the future" }
- *               totalSeats: { type: integer, minimum: 1 }
- *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$', description: "Decimal string, e.g. \"1200.00\"" }
- *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; totalSeats must not exceed its capacity" }
+ *               totalSeats: { type: integer, minimum: 1, description: "Optional — fixed by the vehicle's seat capacity. If sent it must equal that capacity (400 otherwise)" }
+ *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$', description: "Decimal string, e.g. \"1200.00\". The TOTAL trip cost, split among confirmed riders. Must be plausible for the route: ₹1–₹10 per km of straight-line distance (never below ₹10 or above ₹50,000; a short hop may cost up to ₹200). Outside that is a 400 that names the allowed range." }
+ *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; its seat capacity becomes the ride's totalSeats" }
  *     responses:
  *       201: { description: Ride created, content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
- *       400: { description: "Bad input (past departureTime, totalSeats <= 0)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       400: { description: "Bad input (past departureTime, a fare outside the allowed range for the route — the message names the range, a totalSeats that differs from the vehicle's capacity)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       403: { description: "Caller isn't a DRIVER, or the vehicle belongs to someone else", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: Vehicle not approved, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
@@ -120,7 +120,7 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  * /api/rides/{id}:
  *   patch:
  *     summary: Edit a ride's details (driver, own ride only)
- *     description: Blocked once the ride has any CONFIRMED booking (409) — a rider who already has a seat shouldn't have the route/time change under them. Cancel and repost instead. Same request body as POST /api/rides; seatsAvailable is reset to the new totalSeats.
+ *     description: Blocked once the ride has any CONFIRMED booking (409) — a rider who already has a seat shouldn't have the route/time change under them. Cancel and repost instead. Same request body as POST /api/rides; totalSeats and seatsAvailable are reset to the vehicle's seat capacity (so switching vehicle switches the seat count).
  *     tags: [Rides]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
@@ -130,7 +130,7 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  *         application/json:
  *           schema:
  *             type: object
- *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, totalSeats, estimatedCost, vehicleId]
+ *             required: [originLat, originLng, destLat, destLng, originLabel, destLabel, departureTime, estimatedCost, vehicleId]
  *             properties:
  *               originLat: { type: number, minimum: -90, maximum: 90 }
  *               originLng: { type: number, minimum: -180, maximum: 180 }
@@ -139,12 +139,12 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  *               originLabel: { type: string }
  *               destLabel: { type: string }
  *               departureTime: { type: string, format: date-time, description: "Must be in the future" }
- *               totalSeats: { type: integer, minimum: 1 }
- *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$' }
- *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; totalSeats must not exceed its capacity" }
+ *               totalSeats: { type: integer, minimum: 1, description: "Optional — fixed by the vehicle's seat capacity. If sent it must equal that capacity (400 otherwise)" }
+ *               estimatedCost: { type: string, pattern: '^\\d+(\\.\\d{1,2})?$', description: "Same fare rule as POST /api/rides" }
+ *               vehicleId: { type: string, format: uuid, description: "An APPROVED vehicle you own; its seat capacity becomes the ride's totalSeats" }
  *     responses:
  *       200: { description: Ride updated, content: { application/json: { schema: { $ref: '#/components/schemas/Ride' } } } }
- *       400: { description: "Bad input (past departureTime, totalSeats <= 0)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       400: { description: "Bad input (past departureTime, a fare outside the allowed range for the route — the message names the range, a totalSeats that differs from the vehicle's capacity)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: "Ride is no longer SCHEDULED, or has a confirmed booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }

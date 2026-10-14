@@ -1,6 +1,6 @@
 import { BookingStatus, RideStatus } from "@prisma/client";
 import { env } from "../../config/env";
-import { ConflictError, ForbiddenError, NotFoundError } from "../../lib/AppError";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/AppError";
 import { writeAuditLog } from "../../lib/auditLog";
 import { prisma } from "../../lib/prisma";
 import { hasDeparted, isCancellationWindowClosed } from "../../lib/rideTime";
@@ -25,6 +25,19 @@ function vehicleSnapshot(vehicle: { id: string; make: string; model: string; col
   };
 }
 
+// A ride's seats are its vehicle's capacity. Without a vehicle (only while
+// REQUIRE_APPROVED_VEHICLE is off) the schema has already demanded totalSeats;
+// the check here keeps the type honest and fails cleanly if that is bypassed.
+function seatsFor(vehicle: { seatCapacity: number } | null, input: CreateRideInput): number {
+  if (vehicle) {
+    return vehicle.seatCapacity;
+  }
+  if (input.totalSeats === undefined) {
+    throw new ValidationError("totalSeats is required when no vehicle is selected");
+  }
+  return input.totalSeats;
+}
+
 async function createRideTransaction(driverId: string, input: CreateRideInput) {
   return prisma.$transaction(async (tx) => {
     // Vehicle first: the lock taken inside the check holds off a concurrent
@@ -32,6 +45,7 @@ async function createRideTransaction(driverId: string, input: CreateRideInput) {
     const vehicle = input.vehicleId
       ? await assertVehicleCanServeRide(tx, driverId, input.vehicleId, input.totalSeats)
       : null;
+    const totalSeats = seatsFor(vehicle, input);
     const ride = await tx.ride.create({
       data: {
         driverId,
@@ -42,10 +56,10 @@ async function createRideTransaction(driverId: string, input: CreateRideInput) {
         originLabel: input.originLabel,
         destLabel: input.destLabel,
         departureTime: input.departureTime,
-        totalSeats: input.totalSeats,
+        totalSeats,
         // Booking's atomic decrement (design spec §5) mutates this counter;
         // totalSeats itself never changes after creation.
-        seatsAvailable: input.totalSeats,
+        seatsAvailable: totalSeats,
         estimatedCost: input.estimatedCost,
       },
     });
@@ -141,10 +155,6 @@ async function editRideTransaction(driverId: string, rideId: string, input: Crea
         originLabel: input.originLabel,
         destLabel: input.destLabel,
         departureTime: input.departureTime,
-        totalSeats: input.totalSeats,
-        // Safe to reset outright: if a confirmed booking turns up below, this
-        // whole transaction — including this write — rolls back.
-        seatsAvailable: input.totalSeats,
         estimatedCost: input.estimatedCost,
       },
     });
@@ -158,8 +168,16 @@ async function editRideTransaction(driverId: string, rideId: string, input: Crea
       throw new ConflictError("Cannot edit a ride with confirmed bookings — cancel and repost instead");
     }
 
-    if (input.vehicleId) {
-      const vehicle = await assertVehicleCanServeRide(tx, driverId, input.vehicleId, input.totalSeats);
+    // Seats come from the vehicle, whose lock must be taken AFTER the Ride lock
+    // above (order Ride -> Vehicle), so they are written here, not in the
+    // updateMany. Safe to reset seatsAvailable outright: no confirmed booking
+    // exists (checked above), and any throw rolls the whole transaction back.
+    const vehicle = input.vehicleId
+      ? await assertVehicleCanServeRide(tx, driverId, input.vehicleId, input.totalSeats)
+      : null;
+    const totalSeats = seatsFor(vehicle, input);
+    await tx.ride.update({ where: { id: rideId }, data: { totalSeats, seatsAvailable: totalSeats } });
+    if (vehicle) {
       const snapshot = vehicleSnapshot(vehicle);
       await tx.rideVehicle.upsert({
         where: { rideId },

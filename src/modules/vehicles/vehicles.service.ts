@@ -141,11 +141,16 @@ export async function updateVehicle(ownerId: string, vehicleId: string, input: U
 // Takes the vehicle row lock, then re-checks everything under it, so a driver
 // editing the vehicle (-> PENDING) or an admin review at the same moment can't
 // let a ride slip through against a vehicle that just left APPROVED.
+//
+// A ride's seat count is fixed by its vehicle: the caller sets it to
+// `vehicle.seatCapacity`. `requestedSeats` is only what the client sent (if
+// anything); a different number is a 400, so a stale client can't believe it
+// posted a 2-seat ride that is in fact a 4-seat one.
 export async function assertVehicleCanServeRide(
   tx: Prisma.TransactionClient,
   driverId: string,
   vehicleId: string,
-  totalSeats: number,
+  requestedSeats?: number,
 ) {
   await lockVehicle(tx, vehicleId);
   const vehicle = await tx.vehicle.findUnique({ where: { id: vehicleId } });
@@ -158,8 +163,10 @@ export async function assertVehicleCanServeRide(
   if (vehicle.status !== VehicleStatus.APPROVED) {
     throw new ConflictError("This vehicle isn't approved yet");
   }
-  if (totalSeats > vehicle.seatCapacity) {
-    throw new ValidationError(`totalSeats can't exceed this vehicle's capacity of ${vehicle.seatCapacity}`);
+  if (requestedSeats !== undefined && requestedSeats !== vehicle.seatCapacity) {
+    throw new ValidationError(
+      `totalSeats is fixed by the vehicle at ${vehicle.seatCapacity}; leave it out or send ${vehicle.seatCapacity}`,
+    );
   }
   return vehicle;
 }
