@@ -52,8 +52,9 @@ services:
 
   # S3-compatible object store for vehicle documents (RC / licence). No account
   # needed; console at http://localhost:9001 (minioadmin / minioadmin).
+  # minio/minio is no longer published on Docker Hub, so this uses the Chainguard image.
   minio:
-    image: minio/minio
+    image: cgr.dev/chainguard/minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
