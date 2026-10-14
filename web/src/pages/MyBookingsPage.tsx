@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
+import { formatVehicle, type VehicleSummary } from "../lib/vehicleTypes";
 
 interface MyBooking {
   id: string;
@@ -15,6 +16,7 @@ interface MyBooking {
     status: "SCHEDULED" | "CANCELLED" | "COMPLETED";
   };
   driverContact: { name: string; phone: string } | null;
+  vehicle: VehicleSummary | null;
 }
 
 export function MyBookingsPage() {
@@ -76,6 +78,9 @@ export function MyBookingsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Driver: {booking.driverContact.name} · {booking.driverContact.phone}
               </p>
+            )}
+            {booking.vehicle && (
+              <p className="mt-1 text-sm text-gray-500">Vehicle: {formatVehicle(booking.vehicle)}</p>
             )}
             {booking.status === "CONFIRMED" && booking.ride.status === "SCHEDULED" && (
               <div className="mt-3">

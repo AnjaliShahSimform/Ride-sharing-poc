@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, ApiError } from "../lib/api";
 import { LocationPicker, type LocationValue } from "../components/LocationPicker";
+import { VehicleSelect } from "../components/VehicleSelect";
 
 const emptyLocation: LocationValue = { label: "", lat: "", lng: "" };
 
@@ -11,6 +12,7 @@ export function PostRidePage() {
   const [departureTime, setDepartureTime] = useState("");
   const [totalSeats, setTotalSeats] = useState("1");
   const [estimatedCost, setEstimatedCost] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -55,6 +57,7 @@ export function PostRidePage() {
           departureTime: new Date(departureTime).toISOString(),
           totalSeats: Number(totalSeats),
           estimatedCost,
+          ...(vehicleId && { vehicleId }),
         },
       });
       navigate("/rides/mine");
@@ -90,6 +93,15 @@ export function PostRidePage() {
         </div>
         <LocationPicker label="Destination" labelValue={dest.label} latValue={dest.lat} lngValue={dest.lng} onChange={setDest} />
         <label className={labelClass}>
+          Vehicle
+          <VehicleSelect
+            value={vehicleId}
+            onChange={setVehicleId}
+            seatsNeeded={Number(totalSeats) || 1}
+            className={inputClass}
+          />
+        </label>
+        <label className={labelClass}>
           Departure time
           <input
             type="datetime-local"
@@ -106,7 +118,10 @@ export function PostRidePage() {
               type="number"
               min="1"
               value={totalSeats}
-              onChange={(e) => setTotalSeats(e.target.value)}
+              onChange={(e) => {
+                setTotalSeats(e.target.value);
+                setVehicleId("");
+              }}
               required
               className={inputClass}
             />

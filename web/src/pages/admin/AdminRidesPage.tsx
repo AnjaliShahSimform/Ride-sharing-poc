@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
+import { formatVehicle, type VehicleSummary } from "../../lib/vehicleTypes";
 
 interface AdminRide {
   id: string;
@@ -11,6 +12,7 @@ interface AdminRide {
   seatsAvailable: number;
   estimatedCost: string;
   driver: { id: string; name: string; email: string };
+  vehicle?: VehicleSummary | null;
 }
 
 export function AdminRidesPage() {
@@ -42,6 +44,7 @@ export function AdminRidesPage() {
             <tr>
               <th className="px-4 py-3">Route</th>
               <th className="px-4 py-3">Driver</th>
+              <th className="px-4 py-3">Vehicle</th>
               <th className="px-4 py-3">Departure</th>
               <th className="px-4 py-3">Seats</th>
               <th className="px-4 py-3">Cost</th>
@@ -55,6 +58,7 @@ export function AdminRidesPage() {
                   {ride.originLabel} → {ride.destLabel}
                 </td>
                 <td className="px-4 py-3 text-gray-600">{ride.driver.name}</td>
+                <td className="px-4 py-3 text-gray-600">{ride.vehicle ? formatVehicle(ride.vehicle) : "—"}</td>
                 <td className="px-4 py-3 text-gray-500">{new Date(ride.departureTime).toLocaleString()}</td>
                 <td className="px-4 py-3 text-gray-600">
                   {ride.seatsAvailable}/{ride.totalSeats}

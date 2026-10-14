@@ -56,6 +56,9 @@ export function Layout() {
               <Link to="/admin/rides" className="text-sm font-medium text-gray-600 hover:text-blue-600">
                 All rides
               </Link>
+              <Link to="/admin/vehicles" className="text-sm font-medium text-gray-600 hover:text-blue-600">
+                Vehicle review
+              </Link>
               <Link to="/admin/audit-logs" className="text-sm font-medium text-gray-600 hover:text-blue-600">
                 Audit log
               </Link>

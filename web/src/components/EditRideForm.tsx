@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { apiFetch, ApiError } from "../lib/api";
+import { VehicleSelect } from "./VehicleSelect";
 
 export interface EditableRide {
   id: string;
@@ -12,6 +13,7 @@ export interface EditableRide {
   departureTime: string;
   totalSeats: number;
   estimatedCost: string;
+  vehicle?: { vehicleId: string } | null;
 }
 
 interface EditRideFormProps {
@@ -38,6 +40,7 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
   const [departureTime, setDepartureTime] = useState(toDatetimeLocalValue(ride.departureTime));
   const [totalSeats, setTotalSeats] = useState(String(ride.totalSeats));
   const [estimatedCost, setEstimatedCost] = useState(ride.estimatedCost);
+  const [vehicleId, setVehicleId] = useState(ride.vehicle?.vehicleId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -58,6 +61,7 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
           departureTime: new Date(departureTime).toISOString(),
           totalSeats: Number(totalSeats),
           estimatedCost,
+          ...(vehicleId && { vehicleId }),
         },
       });
       onSaved();
@@ -106,6 +110,15 @@ export function EditRideForm({ ride, onSaved, onCancel }: EditRideFormProps) {
           <input value={destLng} onChange={(e) => setDestLng(e.target.value)} required className={inputClass} />
         </label>
       </div>
+      <label className={labelClass}>
+        Vehicle
+        <VehicleSelect
+          value={vehicleId}
+          onChange={setVehicleId}
+          seatsNeeded={Number(totalSeats) || 1}
+          className={inputClass}
+        />
+      </label>
       <label className={labelClass}>
         Departure time
         <input

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "../lib/api";
 import { EditRideForm } from "../components/EditRideForm";
+import { formatVehicle } from "../lib/vehicleTypes";
 
 interface MyRide {
   id: string;
@@ -16,6 +17,7 @@ interface MyRide {
   totalSeats: number;
   seatsAvailable: number;
   estimatedCost: string;
+  vehicle?: { vehicleId: string; make: string; model: string; colour: string; plate: string } | null;
 }
 
 interface RideBooking {
@@ -83,6 +85,9 @@ export function MyRidesPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500">{new Date(ride.departureTime).toLocaleString()}</p>
+            <p className="mt-1 text-sm text-gray-500">
+              {ride.vehicle ? formatVehicle(ride.vehicle) : "Vehicle details not provided"}
+            </p>
             {/* A cancelled ride keeps its old seatsAvailable (the booking cascade
                 doesn't give seats back), so the count would be misleading there. */}
             {ride.status !== "CANCELLED" && (
