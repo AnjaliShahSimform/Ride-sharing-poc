@@ -45,6 +45,8 @@ export const reviewVehicleSchema = z
 
 export const reviewQuerySchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).default("PENDING"),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(200).default(50),
 });
 
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;

@@ -1,15 +1,23 @@
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { ConflictError, UnauthenticatedError } from "../../lib/AppError";
 import { signToken } from "../../lib/jwt";
 import { prisma } from "../../lib/prisma";
 import * as refreshTokens from "./refreshToken.service";
-import type { LoginInput, SignupInput } from "./auth.schemas";
+import type { LoginInput, SignupInput, UpdateProfileInput } from "./auth.schemas";
 
 const SALT_ROUNDS = 10;
 
-function toPublicUser(user: { id: string; name: string; email: string; phone: string; roles: string[] }) {
+function toPublicUser(user: { id: string; name: string; email: string; phone: string; roles: string[]; createdAt: Date }) {
   // Never let passwordHash leave the service layer, under any circumstance.
-  return { id: user.id, name: user.name, email: user.email, phone: user.phone, roles: user.roles };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    roles: user.roles,
+    createdAt: user.createdAt,
+  };
 }
 
 export async function signup(input: SignupInput) {
@@ -87,4 +95,21 @@ export async function getById(userId: string) {
     throw new UnauthenticatedError("User no longer exists");
   }
   return toPublicUser(user);
+}
+
+export async function updateProfile(userId: string, input: UpdateProfileInput) {
+  // Prisma treats an undefined field as "leave unchanged".
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name: input.name, phone: input.phone },
+    });
+    return toPublicUser(user);
+  } catch (err) {
+    // P2025: the row was deleted after the JWT was issued.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+      throw new UnauthenticatedError("User no longer exists");
+    }
+    throw err;
+  }
 }

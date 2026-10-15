@@ -32,8 +32,7 @@ export async function getDocumentUrlHandler(req: Request, res: Response) {
 }
 
 export async function listVehiclesForReviewHandler(req: Request, res: Response) {
-  const { status } = req.query as unknown as ReviewQuery;
-  const vehicles = await vehiclesService.listVehiclesForReview(status);
+  const vehicles = await vehiclesService.listVehiclesForReview(req.query as unknown as ReviewQuery);
   res.status(200).json(vehicles);
 }
 

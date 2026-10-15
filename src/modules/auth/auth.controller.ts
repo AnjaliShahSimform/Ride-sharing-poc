@@ -44,6 +44,11 @@ export async function meHandler(req: Request, res: Response) {
   res.status(200).json({ user });
 }
 
+export async function updateMeHandler(req: Request, res: Response) {
+  const user = await authService.updateProfile(req.user!.sub, req.body);
+  res.status(200).json({ user });
+}
+
 export async function logoutHandler(req: Request, res: Response) {
   await authService.logout(req.cookies?.[REFRESH_COOKIE_NAME]);
   clearAuthCookie(res);

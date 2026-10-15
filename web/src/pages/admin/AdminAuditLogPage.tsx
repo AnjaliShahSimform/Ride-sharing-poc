@@ -1,6 +1,9 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
+import { useClampPage, useListParams, type Paged } from "../../hooks/useListParams";
+import { DateRangeFilter, FilterBar, SelectFilter } from "../../components/admin/FilterBar";
+import { EmptyRow, ListError, ListLoading } from "../../components/admin/ListMessages";
+import { Pagination } from "../../components/admin/Pagination";
 
 interface AuditLogEntry {
   id: string;
@@ -12,37 +15,65 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
-interface AuditLogResponse {
-  entries: AuditLogEntry[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+const ENTITY_OPTIONS = ["Ride", "Booking", "Vehicle"].map((v) => ({ value: v, label: v }));
 
-const PAGE_SIZE = 20;
+// Every action name the backend writes (see writeAuditLog call sites).
+const ACTION_OPTIONS = [
+  "CREATED",
+  "UPDATED",
+  "CANCELLED",
+  "COMPLETED",
+  "COST_RECALCULATED",
+  "DOCUMENT_UPLOADED",
+  "DOCUMENT_VIEWED",
+  "APPROVED",
+  "REJECTED",
+].map((v) => ({ value: v, label: v }));
+
+const FILTER_KEYS = ["entityType", "action", "from", "to"] as const;
 
 export function AdminAuditLogPage() {
-  const [page, setPage] = useState(1);
+  const list = useListParams(FILTER_KEYS);
+  const { filters } = list;
 
-  const { data, isLoading, isError } = useQuery<AuditLogResponse>({
-    queryKey: ["admin", "audit-logs", page],
-    queryFn: () => apiFetch(`/api/admin/audit-logs?page=${page}&pageSize=${PAGE_SIZE}`),
+  const { data, isLoading, isError, error, isFetching } = useQuery<Paged<AuditLogEntry>>({
+    queryKey: ["admin", "audit-logs", list.query],
+    queryFn: () => apiFetch(`/api/admin/audit-logs?${list.query}`),
+    placeholderData: keepPreviousData,
   });
+  useClampPage(data, list.page, list.pageSize, list.setPage);
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading...</p>;
-  if (isError)
-    return (
-      <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-        Failed to load audit logs.
-      </p>
-    );
-
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  if (isLoading) return <ListLoading />;
+  if (isError && !data) return <ListError what="audit logs" error={error} />;
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-gray-900">Audit log</h1>
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+      <FilterBar hasFilters={list.hasFilters} onClear={list.clearFilters}>
+        <SelectFilter
+          label="Entity"
+          value={filters.entityType}
+          options={ENTITY_OPTIONS}
+          allLabel="All entities"
+          onChange={(v) => list.setFilter("entityType", v)}
+        />
+        <SelectFilter
+          label="Action"
+          value={filters.action}
+          options={ACTION_OPTIONS}
+          allLabel="All actions"
+          onChange={(v) => list.setFilter("action", v)}
+        />
+        <DateRangeFilter
+          label="Date"
+          from={filters.from}
+          to={filters.to}
+          onFrom={(v) => list.setFilter("from", v)}
+          onTo={(v) => list.setFilter("to", v)}
+        />
+      </FilterBar>
+      {isError && <ListError what="audit logs" error={error} />}
+      <div className={`overflow-x-auto rounded-xl bg-white shadow-sm ${isFetching ? "opacity-60" : ""}`}>
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
@@ -54,7 +85,8 @@ export function AdminAuditLogPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {data?.entries.map((entry) => (
+            {data?.items.length === 0 && <EmptyRow colSpan={5} what="audit entries" hasFilters={list.hasFilters} />}
+            {data?.items.map((entry) => (
               <tr key={entry.id}>
                 <td className="px-4 py-3 whitespace-nowrap text-gray-500">{new Date(entry.createdAt).toLocaleString()}</td>
                 <td className="px-4 py-3 text-gray-600">
@@ -68,28 +100,15 @@ export function AdminAuditLogPage() {
           </tbody>
         </table>
       </div>
-      {data && data.total > 0 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-          <span>
-            Page {data.page} of {totalPages} ({data.total} entries)
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {data && (
+        <Pagination
+          page={list.page}
+          pageSize={list.pageSize}
+          total={data.total}
+          noun="entries"
+          onPage={list.setPage}
+          onPageSize={list.setPageSize}
+        />
       )}
     </div>
   );

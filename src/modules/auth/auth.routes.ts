@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { loginLimiter, refreshLimiter, signupLimiter } from "../../middleware/rateLimit";
+import { loginLimiter, refreshLimiter, signupLimiter, writeLimiter } from "../../middleware/rateLimit";
 import { validateBody } from "../../middleware/validate";
-import { loginHandler, logoutHandler, meHandler, refreshHandler, signupHandler } from "./auth.controller";
-import { loginSchema, signupSchema } from "./auth.schemas";
+import { loginHandler, logoutHandler, meHandler, refreshHandler, signupHandler, updateMeHandler } from "./auth.controller";
+import { loginSchema, signupSchema, updateProfileSchema } from "./auth.schemas";
 
 export const authRouter = Router();
 
@@ -20,6 +20,7 @@ export const authRouter = Router();
  *         email: { type: string, format: email }
  *         phone: { type: string }
  *         roles: { type: array, items: { type: string, enum: [DRIVER, RIDER, ADMIN] } }
+ *         createdAt: { type: string, format: date-time }
  *     Error:
  *       type: object
  *       properties:
@@ -150,3 +151,33 @@ authRouter.post("/refresh", refreshLimiter, asyncHandler(refreshHandler));
  *       401: { description: No or invalid session, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 authRouter.get("/me", requireAuth, asyncHandler(meHandler));
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   patch:
+ *     summary: Update the current user's name and/or phone
+ *     description: Email and roles can't be changed here — any other key is a 400. Send at least one of name or phone.
+ *     tags: [Auth]
+ *     security: [{ cookieAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string, minLength: 1, maxLength: 100 }
+ *               phone: { type: string, minLength: 7, maxLength: 20 }
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user: { $ref: '#/components/schemas/User' }
+ *       400: { description: Empty body, blank name, short phone or an unknown key, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       401: { description: No or invalid session, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+authRouter.patch("/me", requireAuth, writeLimiter, validateBody(updateProfileSchema), asyncHandler(updateMeHandler));

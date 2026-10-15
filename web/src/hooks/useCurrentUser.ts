@@ -7,6 +7,7 @@ export interface CurrentUser {
   email: string;
   phone: string;
   roles: string[];
+  createdAt?: string;
 }
 
 export function useCurrentUser() {

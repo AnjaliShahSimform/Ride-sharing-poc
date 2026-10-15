@@ -7,7 +7,7 @@ import { sniffDocumentType } from "../../lib/fileType";
 import { prisma } from "../../lib/prisma";
 import * as storage from "../../lib/storage";
 import { notifyVehicleReviewed } from "../notifications/notify";
-import type { CreateVehicleInput, ReviewVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
+import type { CreateVehicleInput, ReviewQuery, ReviewVehicleInput, UpdateVehicleInput } from "./vehicles.schemas";
 
 // Selecting only type + uploadedAt keeps `storageKey` out of every response.
 export const DOC_SELECT = { select: { type: true, uploadedAt: true } } as const;
@@ -279,13 +279,20 @@ export async function getDocumentUrl(
 
 // Oldest first, so the queue is worked in submission order. The plate is NOT
 // masked: the review is a comparison of the declared plate against the RC.
-export async function listVehiclesForReview(status: VehicleStatus) {
-  const vehicles = await prisma.vehicle.findMany({
-    where: { status },
-    include: { documents: DOC_SELECT, owner: { select: { id: true, name: true, email: true } } },
-    orderBy: { createdAt: "asc" },
-  });
-  return vehicles.map((v) => ({ ...vehicleView(v), reviewVersion: reviewVersion(v), owner: v.owner }));
+export async function listVehiclesForReview({ status, page, pageSize }: ReviewQuery) {
+  const where = { status };
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      where,
+      include: { documents: DOC_SELECT, owner: { select: { id: true, name: true, email: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.vehicle.count({ where }),
+  ]);
+  const items = vehicles.map((v) => ({ ...vehicleView(v), reviewVersion: reviewVersion(v), owner: v.owner }));
+  return { items, total, page, pageSize };
 }
 
 export async function reviewVehicle(adminId: string, vehicleId: string, input: ReviewVehicleInput) {

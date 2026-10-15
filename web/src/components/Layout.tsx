@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { initialOf, roleSummary } from "../lib/profile";
 
 export function Layout() {
   const { data } = useCurrentUser();
@@ -20,9 +21,9 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+      <nav className="flex flex-wrap items-center justify-between gap-y-3 border-b border-gray-200 bg-white px-6 py-4">
         <span className="text-lg font-semibold text-gray-900">RideShare</span>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           {isRider && (
             <Link to="/rides" className="text-sm font-medium text-gray-600 hover:text-blue-600">
               Search rides
@@ -63,6 +64,22 @@ export function Layout() {
                 Audit log
               </Link>
             </>
+          )}
+          {data && (
+            <Link
+              to="/profile"
+              aria-label="Your profile"
+              className="flex items-center gap-2 rounded-full border border-gray-200 py-1 pl-1 pr-3 hover:bg-gray-50"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white"
+              >
+                {initialOf(data.user.name)}
+              </span>
+              <span className="max-w-[10rem] truncate text-sm font-medium text-gray-800">{data.user.name}</span>
+              <span className="hidden text-xs text-gray-500 sm:inline">{roleSummary(data.user.roles)}</span>
+            </Link>
           )}
           <button
             onClick={handleLogout}

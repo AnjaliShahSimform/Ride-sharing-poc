@@ -14,6 +14,7 @@ import { PostRidePage } from "./pages/PostRidePage";
 import { MyRidesPage } from "./pages/MyRidesPage";
 import { MyBookingsPage } from "./pages/MyBookingsPage";
 import { MyVehiclesPage } from "./pages/MyVehiclesPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminRidesPage } from "./pages/admin/AdminRidesPage";
 import { AdminVehiclesPage } from "./pages/admin/AdminVehiclesPage";
@@ -58,6 +59,7 @@ const router = createBrowserRouter([
       { path: "/rides/mine", element: <MyRidesPage /> },
       { path: "/bookings/mine", element: <MyBookingsPage /> },
       { path: "/vehicles/mine", element: <MyVehiclesPage /> },
+      { path: "/profile", element: <ProfilePage /> },
       { path: "/admin/users", element: <AdminUsersPage /> },
       { path: "/admin/rides", element: <AdminRidesPage /> },
       { path: "/admin/vehicles", element: <AdminVehiclesPage /> },
