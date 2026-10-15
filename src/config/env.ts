@@ -26,7 +26,13 @@ const envSchema = z.object({
     .default("http://localhost:5173")
     .transform((origin) => origin.replace(/\/$/, "")),
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
-  JWT_EXPIRES_IN: z.string().default("1d"),
+  // Access-token (and `token` cookie) lifetime. Kept short because it can't be
+  // revoked; the refresh token below is what keeps people signed in.
+  JWT_EXPIRES_IN: z.string().default("15m"),
+  REFRESH_TOKEN_EXPIRES_IN: z.string().default("7d"),
+  // A refresh token presented again within this many seconds of being rotated is
+  // treated as a concurrent refresh from another tab, not as theft.
+  REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().int().nonnegative().default(10),
   // Global per-IP rate limit (src/middleware/rateLimit.ts). Individual routes
   // can layer a stricter limit on top via createLimiter().
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),

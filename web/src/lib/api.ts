@@ -37,7 +37,11 @@ function messageFromDetails(details: unknown): string | undefined {
   return messages.length > 0 ? messages.join(" ") : undefined;
 }
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// Paths where a 401 means "wrong credentials / no session", not "access cookie
+// expired" — retrying them through a refresh would be pointless (or a loop).
+const NO_REFRESH_PATHS = new Set(["/api/auth/login", "/api/auth/signup", "/api/auth/refresh"]);
+
+async function send(path: string, options: RequestOptions) {
   const method = options.method ?? "GET";
   // A FormData body must NOT get a JSON Content-Type: the browser has to set
   // multipart/form-data itself, boundary included.
@@ -55,6 +59,33 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   });
 
   const data = await res.json().catch(() => null);
+  return { res, data };
+}
+
+// Concurrent 401s (a page firing several queries at once) share one refresh
+// call. Besides saving requests this matters for correctness: refresh tokens are
+// single-use, so parallel refreshes would race each other on the server.
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= send("/api/auth/refresh", { method: "POST" })
+    .then(({ res }) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  let { res, data } = await send(path, options);
+
+  // The 15-minute access cookie expired: renew it from the refresh cookie and
+  // replay the request once. If renewal fails the original 401 surfaces below,
+  // so callers' existing "not logged in" handling is unchanged.
+  if (res.status === 401 && !NO_REFRESH_PATHS.has(path) && (await refreshSession())) {
+    ({ res, data } = await send(path, options));
+  }
 
   if (!res.ok) {
     const message = data?.message ?? messageFromDetails(data?.details) ?? data?.error ?? "Request failed";

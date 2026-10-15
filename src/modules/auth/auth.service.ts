@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { ConflictError, UnauthenticatedError } from "../../lib/AppError";
 import { signToken } from "../../lib/jwt";
 import { prisma } from "../../lib/prisma";
+import * as refreshTokens from "./refreshToken.service";
 import type { LoginInput, SignupInput } from "./auth.schemas";
 
 const SALT_ROUNDS = 10;
@@ -30,7 +31,8 @@ export async function signup(input: SignupInput) {
   });
 
   const token = signToken({ sub: user.id, roles: user.roles });
-  return { user: toPublicUser(user), token };
+  const refreshToken = await refreshTokens.issue(user.id);
+  return { user: toPublicUser(user), token, refreshToken };
 }
 
 export async function login(input: LoginInput) {
@@ -50,7 +52,33 @@ export async function login(input: LoginInput) {
   }
 
   const token = signToken({ sub: user.id, roles: user.roles });
-  return { user: toPublicUser(user), token };
+  await refreshTokens.deleteExpired(user.id);
+  const refreshToken = await refreshTokens.issue(user.id);
+  return { user: toPublicUser(user), token, refreshToken };
+}
+
+// `refreshToken` is undefined when the presented token lost a race with a
+// concurrent refresh (see refreshToken.service.ts) — the caller then keeps the
+// refresh cookie it already has.
+export async function refresh(rawRefreshToken: string | undefined) {
+  if (!rawRefreshToken) {
+    throw new UnauthenticatedError("Refresh token required");
+  }
+  const { userId, refreshToken } = await refreshTokens.rotate(rawRefreshToken);
+
+  // Roles come from the DB, not the old JWT, so role changes apply on refresh.
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new UnauthenticatedError("User no longer exists");
+  }
+  const token = signToken({ sub: user.id, roles: user.roles });
+  return { user: toPublicUser(user), token, refreshToken };
+}
+
+export async function logout(rawRefreshToken: string | undefined) {
+  if (rawRefreshToken) {
+    await refreshTokens.revokeByRaw(rawRefreshToken);
+  }
 }
 
 export async function getById(userId: string) {

@@ -24,7 +24,11 @@ services:
       - key: JWT_SECRET
         generateValue: true # Render generates and stores a random secret
       - key: JWT_EXPIRES_IN
-        value: 1d
+        value: 15m
+      - key: REFRESH_TOKEN_EXPIRES_IN
+        value: 7d
+      - key: REFRESH_REUSE_GRACE_SECONDS
+        value: "10"
       - key: LOG_LEVEL
         value: info
       # Email notifications. The relay + consumer run inside this web service

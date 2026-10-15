@@ -66,6 +66,9 @@ export const loginLimiter = createLimiter({
   max: 10,
   skipSuccessfulRequests: true,
 });
+// Refresh is called by the frontend on every expired-access 401, so this is
+// looser than login but still bounds a stolen-token replay loop.
+export const refreshLimiter = createLimiter({ name: "refresh", windowMs: 60 * 1000, max: 30 });
 export const signupLimiter = createLimiter({ name: "signup", windowMs: 60 * 60 * 1000, max: 5 });
 export const bookingLimiter = createLimiter({ name: "booking", windowMs: 60 * 1000, max: 10, key: "user" });
 export const searchLimiter = createLimiter({ name: "search", windowMs: 60 * 1000, max: 60, key: "user" });

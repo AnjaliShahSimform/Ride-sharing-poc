@@ -1,7 +1,7 @@
 # Refresh tokens — design
 
 Date: 2026-10-15
-Status: draft, awaiting review
+Status: implemented (see git log); manual walkthrough done, no automated tests by decision
 
 ## 1. Problem
 
@@ -51,6 +51,7 @@ model RefreshToken {
   tokenHash String    @unique   // SHA-256 hex of the raw cookie value
   expiresAt DateTime
   revokedAt DateTime?
+  rotatedAt DateTime?   // set only when spent by a refresh; gates the grace window
   createdAt DateTime  @default(now())
 
   @@index([userId])
@@ -59,12 +60,12 @@ model RefreshToken {
 
 `User` gains `refreshTokens RefreshToken[]`. Only the hash is stored, so a DB leak
 does not yield usable tokens. The raw value is opaque (not a JWT): validity is
-decided by the row, which is what makes it revocable. One additive migration.
+decided by the row, which is what makes it revocable. Two additive migrations (the table, then `rotatedAt`).
 
 ### 3.3 Token service (`src/modules/auth/refreshToken.service.ts`)
 
 - `issue(userId)` — generate raw value, insert row, return raw.
-- `rotate(raw)` — see 3.4; returns `{ user, accessToken, refreshToken? }`.
+- `rotate(raw)` — see 3.4; returns `{ userId, refreshToken? }` (no `refreshToken` in the grace case). `auth.service.refresh` then loads the user and signs the access token.
 - `revokeByRaw(raw)` — set `revokedAt` on the matching row if still active.
 
 `signup` and `login` call `issue`; their controllers set both cookies. `login`
@@ -80,17 +81,20 @@ typically expired when this is called.
 1. Hash `raw`; no cookie → 401.
 2. Conditional update, one winner under Postgres's row lock (same pattern as the
    booking race handling):
-   `UPDATE … SET revokedAt = now() WHERE tokenHash = ? AND revokedAt IS NULL AND expiresAt > now()`.
+   `UPDATE … SET revokedAt = now(), rotatedAt = now() WHERE tokenHash = ? AND revokedAt IS NULL AND expiresAt > now()`.
 3. Count 1 (winner): load the user (missing → 401), sign a new access token with
    the user's *current* roles, `issue` a new refresh token. Respond 200
    `{ user }` and set both cookies.
 4. Count 0: look the row up.
-   - Not found or `expiresAt` passed → 401.
-   - Revoked within `REFRESH_REUSE_GRACE_SECONDS` (default 10) → concurrent
+   - Not found, expired, or never rotated (`rotatedAt` null — revoked by logout
+     or by a reuse sweep) → plain 401. These must *not* get the grace window,
+     or a logged-out token could still mint access cookies for 10 s.
+   - Rotated within `REFRESH_REUSE_GRACE_SECONDS` (default 10) → concurrent
      refresh from another tab. Respond 200, set only a fresh access cookie; leave
      the refresh cookie alone (the winning tab's is already in the shared jar).
-   - Revoked longer ago → reuse. Revoke all of that user's active refresh tokens,
+   - Rotated longer ago → reuse. Revoke all of that user's active refresh tokens,
      log a warning with the user id, clear both cookies, 401. The user must log in.
+   On any 401 here the controller clears both cookies.
 
 Role/ban changes therefore take effect within one access lifetime.
 
@@ -132,8 +136,8 @@ manual walk-through against the dev server (login, expiry, refresh, reuse, logou
 
 ## 5. Accepted risks
 
-- The grace window lets a refresh token that is < 10 s old mint one access token
-  after rotation.
+- The grace window lets a refresh token that was rotated < 10 s ago mint one
+  access token after rotation.
 - An issued access JWT cannot be revoked before its 15 minutes are up.
 - The refresh endpoint is rate-limited per IP; behind a shared NAT, users share
   that bucket (the same trade-off as login).

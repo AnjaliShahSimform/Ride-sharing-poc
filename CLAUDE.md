@@ -179,6 +179,41 @@ full reasoning for this tradeoff vs. a token-based CSRF scheme is in
 [2026-10-08-frontend-cookie-auth-design.md](docs/superpowers/specs/2026-10-08-frontend-cookie-auth-design.md)
 §3.
 
+### Refresh tokens (short access cookie + rotating refresh cookie)
+
+Design: [2026-10-15-refresh-token-design.md](docs/superpowers/specs/2026-10-15-refresh-token-design.md).
+The `token` cookie is now a **15-minute** access JWT (`JWT_EXPIRES_IN`); a second
+httpOnly cookie, `refresh_token` (opaque 32 random bytes, `REFRESH_TOKEN_EXPIRES_IN`
+= 7d), keeps people signed in. Its path is `/api/auth` (not `/api/auth/refresh`)
+because `POST /api/auth/logout` must receive it to revoke the row — it is still
+never sent to rides/bookings/etc. `clearRefreshCookie` must repeat that path.
+Rows live in `RefreshToken` (only the SHA-256 is stored), logic in
+`src/modules/auth/refreshToken.service.ts`.
+
+- **`POST /api/auth/refresh`** needs the CSRF header but not `requireAuth` (the
+  access cookie is usually expired). Rotation is one conditional `UPDATE … WHERE
+  revokedAt IS NULL AND expiresAt > now()` plus the new row in the same
+  transaction, so concurrent refreshes with one token have exactly one winner.
+  Roles are re-read from the DB, so role changes apply on refresh.
+- **Reuse detection.** A token presented again after being *rotated* is either a
+  second tab or a replay. Within `REFRESH_REUSE_GRACE_SECONDS` (10) it only gets
+  a fresh access cookie (the winning tab's refresh cookie is already in the
+  shared jar); later than that, every refresh token of the user is revoked and
+  the call is a 401. The grace window is gated on `rotatedAt`, **not**
+  `revokedAt` — a token revoked by logout or by a reuse sweep has no `rotatedAt`
+  and must never mint cookies (an earlier draft keyed on `revokedAt` and let a
+  logged-out token refresh for 10 s).
+- Any failed refresh clears both cookies. Login deletes the user's expired rows;
+  there is no cleanup job. An issued access JWT cannot be revoked before it
+  expires (≤ 15 min).
+- **Frontend:** `web/src/lib/api.ts`'s `apiFetch` retries a 401 once after a
+  single shared in-flight `POST /api/auth/refresh` (not for login/signup/refresh
+  paths); if refresh fails the original 401 surfaces, so callers' not-logged-in
+  handling is unchanged.
+- No automated tests were written for this flow (explicit decision, like
+  Bookings, rate limiting and notifications); it was verified by hand with curl
+  against the dev server.
+
 Integration tests use Supertest's `request.agent(app)` (not plain
 `request(app)`) wherever a cookie needs to persist across multiple
 requests — plain `request(app)` doesn't retain cookies between calls.

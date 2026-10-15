@@ -85,7 +85,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
       DIRECT_URL: postgresql://postgres:postgres@db:5432/ride_sharing?schema=public
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      REFRESH_TOKEN_EXPIRES_IN: ${REFRESH_TOKEN_EXPIRES_IN:-7d}
+      REFRESH_REUSE_GRACE_SECONDS: ${REFRESH_REUSE_GRACE_SECONDS:-10}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # The relay + consumer run in the `worker` service below, not in here.
       RUN_WORKER_IN_PROCESS: "false"
