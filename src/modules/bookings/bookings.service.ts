@@ -6,6 +6,8 @@ import { hasDeparted, isCancellationWindowClosed } from "../../lib/rideTime";
 import { invalidateSearchCacheAfter } from "../../lib/searchCache";
 import { notifyBookingCancelled, notifyBookingCreated } from "../notifications/notify";
 
+const ALREADY_BOOKED_MESSAGE = "You already have a booking on this ride";
+
 function splitCost(totalCost: Prisma.Decimal, confirmedCount: number): Prisma.Decimal {
   return totalCost.dividedBy(confirmedCount).toDecimalPlaces(2);
 }
@@ -49,6 +51,17 @@ async function bookSeatTransaction(rideId: string, riderId: string) {
       throw new ConflictError("This ride has already departed");
     }
 
+    // Friendly fast path only. Two concurrent requests can both pass this read,
+    // so the real guarantee is the partial unique index on CONFIRMED bookings,
+    // caught in bookSeat below.
+    const existing = await tx.booking.findFirst({
+      where: { rideId, riderId, status: BookingStatus.CONFIRMED },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictError(ALREADY_BOOKED_MESSAGE);
+    }
+
     const result = await tx.ride.updateMany({
       where: { id: rideId, status: "SCHEDULED", seatsAvailable: { gt: 0 } },
       data: { seatsAvailable: { decrement: 1 } },
@@ -83,7 +96,16 @@ async function bookSeatTransaction(rideId: string, riderId: string) {
 }
 
 export function bookSeat(rideId: string, riderId: string) {
-  return invalidateSearchCacheAfter(bookSeatTransaction(rideId, riderId));
+  return invalidateSearchCacheAfter(
+    bookSeatTransaction(rideId, riderId).catch((err) => {
+      // The unique-index loser of a concurrent double-submit. The whole
+      // transaction (including the seat decrement) has already rolled back.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictError(ALREADY_BOOKED_MESSAGE);
+      }
+      throw err;
+    }),
+  );
 }
 
 async function cancelBookingTransaction(actorId: string, bookingId: string) {
