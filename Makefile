@@ -17,7 +17,7 @@ install:
 	cd web && npm install
 
 dev:
-	docker compose up -d db redis rabbitmq mailpit
+	docker compose up -d db redis rabbitmq mailpit minio
 	npm run dev
 
 dev-web:

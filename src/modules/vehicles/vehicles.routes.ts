@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
-import { uploadLimiter, vehicleLimiter } from "../../middleware/rateLimit";
+import { uploadLimiter, writeLimiter } from "../../middleware/rateLimit";
 import { validateBody } from "../../middleware/validate";
 import {
   createVehicleHandler,
@@ -15,7 +15,7 @@ import { uploadSingleFile } from "./vehicles.upload";
 
 export const vehiclesRouter = Router();
 
-vehiclesRouter.use(requireAuth);
+vehiclesRouter.use(requireAuth, writeLimiter);
 
 /**
  * @swagger
@@ -70,7 +70,7 @@ vehiclesRouter.use(requireAuth);
  *       403: { description: Caller isn't a DRIVER, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: Plate already registered, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-vehiclesRouter.post("/", requireRole("DRIVER"), vehicleLimiter, validateBody(createVehicleSchema), asyncHandler(createVehicleHandler));
+vehiclesRouter.post("/", requireRole("DRIVER"), validateBody(createVehicleSchema), asyncHandler(createVehicleHandler));
 
 /**
  * @swagger
@@ -113,7 +113,7 @@ vehiclesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyVehiclesHan
  *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: Plate already registered, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-vehiclesRouter.patch("/:id", requireRole("DRIVER"), vehicleLimiter, validateBody(updateVehicleSchema), asyncHandler(updateVehicleHandler));
+vehiclesRouter.patch("/:id", requireRole("DRIVER"), validateBody(updateVehicleSchema), asyncHandler(updateVehicleHandler));
 
 /**
  * @swagger

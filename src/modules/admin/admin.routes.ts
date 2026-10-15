@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
+import { writeLimiter } from "../../middleware/rateLimit";
 import { validateBody, validateQuery } from "../../middleware/validate";
 import { listVehiclesForReviewHandler, reviewVehicleHandler } from "../vehicles/vehicles.controller";
 import { reviewQuerySchema, reviewVehicleSchema } from "../vehicles/vehicles.schemas";
@@ -9,7 +10,7 @@ import { auditLogQuerySchema } from "./admin.schemas";
 
 export const adminRouter = Router();
 
-adminRouter.use(requireAuth, requireRole("ADMIN"));
+adminRouter.use(requireAuth, requireRole("ADMIN"), writeLimiter);
 
 /**
  * @swagger

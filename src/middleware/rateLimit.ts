@@ -69,5 +69,22 @@ export const loginLimiter = createLimiter({
 export const signupLimiter = createLimiter({ name: "signup", windowMs: 60 * 60 * 1000, max: 5 });
 export const bookingLimiter = createLimiter({ name: "booking", windowMs: 60 * 1000, max: 10, key: "user" });
 export const searchLimiter = createLimiter({ name: "search", windowMs: 60 * 1000, max: 60, key: "user" });
-export const vehicleLimiter = createLimiter({ name: "vehicle", windowMs: 60 * 1000, max: 20, key: "user" });
 export const uploadLimiter = createLimiter({ name: "vehicleUpload", windowMs: 60 * 60 * 1000, max: 20, key: "user" });
+// The default limit for every authenticated WRITE (anything but GET/HEAD/OPTIONS),
+// mounted once per router right after requireAuth — so a route needs no limiter
+// of its own, and a new route is covered without anyone remembering to add one.
+// A person has no reason to change state more than a few times a minute, and
+// without this a runaway client (a stuck retry loop, a double-click spree) only
+// meets the global 300-per-15-minutes cap. One counter per user across all
+// routers; a request the service then rejects with a 409 still counts.
+//
+// Overriding it for one route, as with the global limit: to be STRICTER, add a
+// limiter to that route's chain (bookingLimiter, uploadLimiter) — both count, the
+// tighter wins; to be looser, exempt the route in the `skip` below.
+export const writeLimiter = createLimiter({
+  name: "write",
+  windowMs: 60 * 1000,
+  max: 20,
+  key: "user",
+  skip: (req) => req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
+});

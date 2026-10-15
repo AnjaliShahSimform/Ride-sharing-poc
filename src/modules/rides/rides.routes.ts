@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth, requireRole } from "../../middleware/auth.middleware";
-import { bookingLimiter, searchLimiter } from "../../middleware/rateLimit";
+import { bookingLimiter, searchLimiter, writeLimiter } from "../../middleware/rateLimit";
 import { validateBody, validateQuery } from "../../middleware/validate";
 import { createBookingHandler, getRideBookingsHandler } from "../bookings/bookings.controller";
 import {
@@ -16,7 +16,7 @@ import { createRideSchema, searchRidesQuerySchema } from "./rides.schemas";
 
 export const ridesRouter = Router();
 
-ridesRouter.use(requireAuth);
+ridesRouter.use(requireAuth, writeLimiter);
 
 /**
  * @swagger
@@ -72,6 +72,7 @@ ridesRouter.use(requireAuth);
  *       403: { description: "Caller isn't a DRIVER, or the vehicle belongs to someone else", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Vehicle not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: Vehicle not approved, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many write requests (20 per minute per user, shared by every POST/PATCH/PUT/DELETE endpoint)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(createRideHandler));
 
@@ -148,6 +149,7 @@ ridesRouter.get("/mine", requireRole("DRIVER"), asyncHandler(getMyRidesHandler))
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: "Ride is no longer SCHEDULED, or has a confirmed booking", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many write requests (20 per minute per user, shared by every POST/PATCH/PUT/DELETE endpoint)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.patch("/:id", requireRole("DRIVER"), validateBody(createRideSchema), asyncHandler(editRideHandler));
 
@@ -165,6 +167,7 @@ ridesRouter.patch("/:id", requireRole("DRIVER"), validateBody(createRideSchema),
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: "Ride is already cancelled or completed, or it is on/after its day of departure", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many write requests (20 per minute per user, shared by every POST/PATCH/PUT/DELETE endpoint)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.patch("/:id/cancel", requireRole("DRIVER"), asyncHandler(cancelRideHandler));
 
@@ -182,6 +185,7 @@ ridesRouter.patch("/:id/cancel", requireRole("DRIVER"), asyncHandler(cancelRideH
  *       403: { description: Not this ride's driver, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       404: { description: Ride not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       409: { description: "Ride is already cancelled or completed, or it has not departed yet", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: "Too many write requests (20 per minute per user, shared by every POST/PATCH/PUT/DELETE endpoint)", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
 ridesRouter.patch("/:id/complete", requireRole("DRIVER"), asyncHandler(completeRideHandler));
 

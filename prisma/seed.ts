@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { CreateBucketCommand, DeleteObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Prisma, PrismaClient, Role, RideStatus, BookingStatus, VehicleStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import dotenv from "dotenv";
+
+// Not `override`: a variable exported in the shell (say an explicit DATABASE_URL
+// to seed a different database) still wins over .env, as it always has for the
+// seed. The S3_* settings below are read from here too.
+dotenv.config();
 
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 10;
@@ -26,6 +33,68 @@ function addHours(date: Date, hours: number) {
 function clampPast(date: Date) {
   const limit = NOW - HOUR;
   return date.getTime() > limit ? new Date(limit) : date;
+}
+
+// ---------------------------------------------------------------------------
+// Placeholder documents for the PENDING vehicles, so an admin can try the whole
+// review (view both documents, then Approve) straight after seeding. They go
+// into the same private bucket the API uses (the S3_* settings; MinIO locally).
+// Storage that isn't configured or isn't reachable is skipped with a note, never
+// an error — and a document row is only ever written after its file is stored,
+// so nothing can point at a missing file. The files are tiny generated PDFs that
+// state the plate the admin is meant to check, marked as demo data.
+// ---------------------------------------------------------------------------
+function storageFromEnv() {
+  const { S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY, S3_REGION } = process.env;
+  if (!S3_ENDPOINT || !S3_BUCKET || !S3_ACCESS_KEY || !S3_SECRET_KEY) {
+    return null;
+  }
+  return {
+    bucket: S3_BUCKET,
+    client: new S3Client({
+      region: S3_REGION || "us-east-1",
+      endpoint: S3_ENDPOINT,
+      forcePathStyle: true, // MinIO and most S3-compatible hosts need path-style URLs
+      credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY },
+    }),
+  };
+}
+type Storage = NonNullable<ReturnType<typeof storageFromEnv>>;
+
+async function ensureBucket({ client, bucket }: Storage) {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }));
+  } catch {
+    await client.send(new CreateBucketCommand({ Bucket: bucket }));
+  }
+}
+
+async function removeObjects({ client, bucket }: Storage, keys: string[]) {
+  await Promise.allSettled(keys.map((Key) => client.send(new DeleteObjectCommand({ Bucket: bucket, Key }))));
+}
+
+// A minimal but valid one-page PDF (ASCII text only, standard Helvetica).
+function placeholderPdf(lines: string[]): Buffer {
+  const escape = (text: string) => text.replace(/[\\()]/g, "\\$&");
+  const content = ["BT", "/F1 14 Tf", "72 720 Td", "20 TL", ...lines.map((line) => `(${escape(line)}) Tj T*`), "ET"].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /Resources << /Font << /F1 4 0 R >> >> >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((body, index) => {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xrefAt = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
 }
 
 // ---------------------------------------------------------------------------
@@ -56,10 +125,10 @@ type UserKey = keyof typeof USER_DEFS;
 
 // ---------------------------------------------------------------------------
 // Vehicles — one of every state. Seeded vehicles skip the document workflow
-// (like the seed already skips signup), so none has documents: the APPROVED
-// ones let drivers post rides straight away, the PENDING ones fill the admin
-// review queue (upload an RC and a licence through the UI to try approval),
-// and the REJECTED one shows the rejection note and the resubmit path.
+// (like the seed already skips signup): the APPROVED ones let drivers post rides
+// straight away, the PENDING ones fill the admin review queue (with placeholder
+// documents when storage is set up, so Approve is clickable — see above), and
+// the REJECTED one shows the rejection note and the resubmit path.
 // Plates follow the app's Indian-plate format; `plateKey` is the unique handle
 // and is NULL for a REJECTED vehicle (frees the plate), as in the real flow.
 // ---------------------------------------------------------------------------
@@ -391,6 +460,10 @@ async function main() {
   const oldRides = await prisma.ride.findMany({ where: { driverId: { in: seededDriverIds } }, select: { id: true } });
   const oldBookings = await prisma.booking.findMany({ where: { rideId: { in: oldRides.map((r) => r.id) } }, select: { id: true } });
   const oldVehicles = await prisma.vehicle.findMany({ where: { ownerId: { in: seededDriverIds } }, select: { id: true } });
+  const oldDocuments = await prisma.vehicleDocument.findMany({
+    where: { vehicleId: { in: oldVehicles.map((v) => v.id) } },
+    select: { storageKey: true },
+  });
   await prisma.auditLog.deleteMany({
     where: {
       OR: [
@@ -402,6 +475,13 @@ async function main() {
   await prisma.booking.deleteMany({ where: { ride: { driverId: { in: seededDriverIds } } } });
   await prisma.ride.deleteMany({ where: { driverId: { in: seededDriverIds } } }); // cascades RideVehicle
   await prisma.vehicle.deleteMany({ where: { ownerId: { in: seededDriverIds } } }); // cascades VehicleDocument
+
+  // The rows are gone; take their files out of the bucket too (best effort — an
+  // unreachable bucket must not stop the seed), so re-seeding doesn't pile up.
+  const storage = storageFromEnv();
+  if (storage && oldDocuments.length > 0) {
+    await removeObjects(storage, oldDocuments.map((doc) => doc.storageKey));
+  }
 
   // Vehicles, with the history an admin review leaves behind.
   const vehicleIds = {} as Record<VehicleKey, string>;
@@ -442,6 +522,76 @@ async function main() {
   }
   await prisma.vehicle.createMany({ data: vehicleRows });
 
+  // Placeholder RC + licence for each PENDING vehicle. All or nothing: if any
+  // upload fails, the files already stored are removed and no row is written.
+  const documentRows: Prisma.VehicleDocumentCreateManyInput[] = [];
+  let documentNote: string;
+  if (!storage) {
+    documentNote = "no documents — S3_* settings not found in .env";
+  } else {
+    const uploadedKeys: string[] = [];
+    try {
+      await ensureBucket(storage);
+      for (const key of Object.keys(VEHICLE_DEFS) as VehicleKey[]) {
+        const def: VehicleDef = VEHICLE_DEFS[key];
+        if (def.status !== "PENDING") continue;
+        const owner = USER_DEFS[def.owner].name;
+        const uploadedAt = addHours(daysFromNow(-def.createdDaysAgo, 11), 1);
+        const documents: { type: "RC" | "LICENCE"; lines: string[] }[] = [
+          {
+            type: "RC",
+            lines: [
+              "SAMPLE REGISTRATION CERTIFICATE (demo data)",
+              `Registration no: ${def.plateNumber}`,
+              `Vehicle: ${def.make} ${def.model}, ${def.colour}`,
+              `Owner: ${owner}`,
+              "Generated by the seed script. Not a real document.",
+            ],
+          },
+          {
+            type: "LICENCE",
+            lines: ["SAMPLE DRIVING LICENCE (demo data)", `Holder: ${owner}`, "Generated by the seed script. Not a real document."],
+          },
+        ];
+        for (const doc of documents) {
+          const body = placeholderPdf(doc.lines);
+          const storageKey = `vehicles/${vehicleIds[key]}/${doc.type}/${randomUUID()}`;
+          await storage.client.send(
+            new PutObjectCommand({ Bucket: storage.bucket, Key: storageKey, Body: body, ContentType: "application/pdf" }),
+          );
+          uploadedKeys.push(storageKey);
+          documentRows.push({
+            vehicleId: vehicleIds[key],
+            type: doc.type,
+            storageKey,
+            mimeType: "application/pdf",
+            sizeBytes: body.length,
+            uploadedAt,
+          });
+          vehicleAudits.push({
+            entityType: "Vehicle",
+            entityId: vehicleIds[key],
+            action: "DOCUMENT_UPLOADED",
+            actorId: ids[def.owner],
+            createdAt: uploadedAt,
+            metadata: { type: doc.type, resubmitted: false },
+          });
+        }
+      }
+      await prisma.vehicleDocument.createMany({ data: documentRows });
+      documentNote = `placeholder RC + licence PDFs uploaded for ${documentRows.length / 2} pending vehicles`;
+    } catch (error) {
+      await removeObjects(storage, uploadedKeys);
+      documentRows.length = 0;
+      // Drop the audit entries for uploads that didn't stick.
+      for (let i = vehicleAudits.length - 1; i >= 0; i--) {
+        if (vehicleAudits[i].action === "DOCUMENT_UPLOADED") vehicleAudits.splice(i, 1);
+      }
+      const reason = error instanceof Error ? error.message : String(error);
+      documentNote = `no documents — storage not reachable (${reason})`;
+    }
+  }
+
   // Rides, their bookings and the audit trail, all from simulateRide().
   const rideRows: Prisma.RideCreateManyInput[] = [];
   const bookingRows: Prisma.BookingCreateManyInput[] = [];
@@ -475,6 +625,10 @@ async function main() {
   console.log("  Admin:   admin@example.com");
   console.log(`  Password for all: ${SEED_PASSWORD}`);
   console.log("  Vehicles: kiran's Nexon and aditi's Kiger are PENDING (admin review queue); vikram's Ertiga is REJECTED.");
+  console.log(`  Pending-vehicle documents: ${documentNote}.`);
+  if (!documentRows.length) {
+    console.log("    To get Approve buttons: add the S3_* lines from .env.example, run `docker compose up -d minio`, re-run the seed.");
+  }
 }
 
 main()

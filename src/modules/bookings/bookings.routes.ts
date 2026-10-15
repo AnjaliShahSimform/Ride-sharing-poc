@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { requireAuth } from "../../middleware/auth.middleware";
+import { writeLimiter } from "../../middleware/rateLimit";
 import { cancelBookingHandler, getMyBookingsHandler } from "./bookings.controller";
 
 export const bookingsRouter = Router();
 
-bookingsRouter.use(requireAuth);
+bookingsRouter.use(requireAuth, writeLimiter);
 
 /**
  * @swagger

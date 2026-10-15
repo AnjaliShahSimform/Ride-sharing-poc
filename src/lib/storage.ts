@@ -69,11 +69,22 @@ function ensureBucket(): Promise<void> {
   return bucketReady;
 }
 
+// An unreachable or failing storage server is an outage of document storage, not
+// a bug in the app: the caller gets a 503 saying so (the cause is logged), where
+// it used to get a bare 500. A missing configuration is already a 503 (settings()).
 export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
-  await ensureBucket();
-  await client().send(
-    new PutObjectCommand({ Bucket: settings().bucket, Key: key, Body: body, ContentType: contentType }),
-  );
+  try {
+    await ensureBucket();
+    await client().send(
+      new PutObjectCommand({ Bucket: settings().bucket, Key: key, Body: body, ContentType: contentType }),
+    );
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      throw err;
+    }
+    logger.error({ err, key }, "Document storage request failed");
+    throw new ServiceUnavailableError("Document storage is unavailable right now, please try again shortly");
+  }
 }
 
 // Best-effort: a failed delete only leaves an orphan object, never a bad row.

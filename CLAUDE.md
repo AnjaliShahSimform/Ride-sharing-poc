@@ -79,7 +79,11 @@ change both. The seed script's fares all sit inside the band.
   through 60-second signed URLs (`GET /api/vehicles/:id/documents/:type`), each
   issue audit-logged. `S3_ENDPOINT` (app → storage) and `S3_PUBLIC_ENDPOINT`
   (what the browser can reach) differ inside docker. All `S3_*` vars are
-  optional: without them the server boots and only the document endpoints 503.
+  optional: without them the server boots and only the document endpoints 503;
+  so does configured-but-unreachable storage (`putObject` maps any storage
+  failure to a 503 and logs the cause — a bare 500 on document upload means
+  something else). `make dev` starts `minio`; `make down` removes the container
+  (the `minio_data` volume, and the uploaded documents, survive).
   The compose `minio` service uses `cgr.dev/chainguard/minio` because
   `minio/minio` is no longer published on Docker Hub.
 - Seeded drivers have APPROVED vehicles; Kiran also has a PENDING one for the
@@ -208,11 +212,16 @@ scripts in `init()` and every request awaits that load: with Redis down at
 boot, requests would hang or limiting would be disabled permanently.
 `globalLimiter` is mounted in `src/app.ts` after `cors`: per-IP, defaults
 300 requests / 15 min (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW_MS`), `/health` and
-`/api-docs` exempt. Per-route overrides are built with `createLimiter({ windowMs,
-max, key })` and added to a route's middleware chain (`loginLimiter`,
-`signupLimiter`, `bookingLimiter`, `searchLimiter`). A request matching both
-is counted by both, so a route override can only *tighten* the global limit;
-to make a route looser, exempt it in `globalLimiter`'s `skip`. `key: "user"`
+`/api-docs` exempt. There is a second **default, per user, for every
+authenticated write** (anything but GET/HEAD/OPTIONS): `writeLimiter`, 20 per
+minute, mounted once per router right after `requireAuth` (rides, bookings,
+vehicles, admin) — so a route needs no limiter of its own and a new route is
+covered automatically. Per-route overrides are built with `createLimiter({
+windowMs, max, key })` and added to a route's middleware chain (`loginLimiter`,
+`signupLimiter`, `bookingLimiter`, `searchLimiter`, `uploadLimiter`). A request
+matching several is counted by each, so a route override can only *tighten* a
+default; to make a route looser, exempt it in that default's `skip`
+(`globalLimiter` or `writeLimiter`). `key: "user"`
 keys by JWT subject and only works on routes mounted after `requireAuth`.
 `app.set("trust proxy", 1)` is required behind Render's proxy or every client
 shares one IP bucket. The integration suite logs in far more than the login
