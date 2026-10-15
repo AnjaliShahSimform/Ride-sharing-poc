@@ -20,8 +20,9 @@ interface SubmittedParams {
   originLng: string;
   destLat: string;
   destLng: string;
-  earliestDeparture: string;
-  latestDeparture: string;
+  // Absent when no travel date was picked: the search is then route-only.
+  earliestDeparture?: string;
+  latestDeparture?: string;
   radiusKm: string;
 }
 
@@ -95,17 +96,20 @@ export function SearchRidesPage() {
       setFormError("Select a location from the dropdown for both origin and destination.");
       return;
     }
-    // A single calendar date, expanded to its full local day (midnight to
-    // midnight) and converted to UTC — the backend still takes an exact
-    // earliest/latest departure range, it's just always a whole day now.
+    // An optional single calendar date, expanded to its full local day
+    // (midnight to midnight) and converted to UTC — the backend takes an exact
+    // earliest/latest departure range. With no date, neither is sent and the
+    // search covers every upcoming ride on the route.
     setSubmitted({
       originLat: origin.lat,
       originLng: origin.lng,
       destLat: dest.lat,
       destLng: dest.lng,
       radiusKm,
-      earliestDeparture: new Date(`${date}T00:00:00`).toISOString(),
-      latestDeparture: new Date(`${date}T23:59:59.999`).toISOString(),
+      ...(date && {
+        earliestDeparture: new Date(`${date}T00:00:00`).toISOString(),
+        latestDeparture: new Date(`${date}T23:59:59.999`).toISOString(),
+      }),
     });
   }
 
@@ -137,8 +141,9 @@ export function SearchRidesPage() {
           </div>
           <LocationPicker label="Destination" labelValue={dest.label} latValue={dest.lat} lngValue={dest.lng} onChange={setDest} />
           <label className={labelClass}>
-            Travel date
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className={inputClass} />
+            Travel date <span className="font-normal text-gray-500">(optional)</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+            <span className="mt-1 block text-xs font-normal text-gray-500">Leave empty to see all upcoming rides.</span>
           </label>
           <label className={labelClass}>
             Search radius (km)

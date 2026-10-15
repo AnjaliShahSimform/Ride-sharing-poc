@@ -85,8 +85,9 @@ export const searchRidesQuerySchema = z.object({
   originLng: z.coerce.number().min(-180).max(180),
   destLat: z.coerce.number().min(-90).max(90),
   destLng: z.coerce.number().min(-180).max(180),
-  earliestDeparture: z.coerce.date(),
-  latestDeparture: z.coerce.date(),
+  // Both optional: with neither, the search is route-only (all upcoming rides).
+  earliestDeparture: z.coerce.date().optional(),
+  latestDeparture: z.coerce.date().optional(),
   radiusKm: z.coerce.number().positive().default(10),
 }).superRefine(requireIndia);
 

@@ -80,8 +80,8 @@ ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asy
  * @swagger
  * /api/rides/search:
  *   get:
- *     summary: Search for rides matching a route and time window
- *     description: A real indexed bounding-box query on both origin and destination, ANDed with a time-window range — not an in-memory filter. Never includes driver contact or vehicle fields.
+ *     summary: Search for rides matching a route, optionally within a time window
+ *     description: A real indexed bounding-box query on both origin and destination, ANDed with a departure-time range — not an in-memory filter. Only rides that have not yet departed are returned, soonest first, at most 100. Never includes driver contact or vehicle fields.
  *     tags: [Rides]
  *     security: [{ cookieAuth: [] }]
  *     parameters:
@@ -89,8 +89,8 @@ ridesRouter.post("/", requireRole("DRIVER"), validateBody(createRideSchema), asy
  *       - { in: query, name: originLng, required: true, schema: { type: number } }
  *       - { in: query, name: destLat, required: true, schema: { type: number } }
  *       - { in: query, name: destLng, required: true, schema: { type: number } }
- *       - { in: query, name: earliestDeparture, required: true, schema: { type: string, format: date-time } }
- *       - { in: query, name: latestDeparture, required: true, schema: { type: string, format: date-time } }
+ *       - { in: query, name: earliestDeparture, required: false, description: "Optional. Omit both dates to search by route only (all upcoming rides).", schema: { type: string, format: date-time } }
+ *       - { in: query, name: latestDeparture, required: false, schema: { type: string, format: date-time } }
  *       - { in: query, name: radiusKm, required: false, schema: { type: number, default: 10 } }
  *     responses:
  *       200:

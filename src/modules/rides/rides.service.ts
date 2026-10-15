@@ -83,15 +83,24 @@ export function searchRides(query: SearchRidesQuery) {
     query.originLng,
     query.destLat,
     query.destLng,
-    query.earliestDeparture.toISOString(),
-    query.latestDeparture.toISOString(),
+    query.earliestDeparture?.toISOString() ?? "",
+    query.latestDeparture?.toISOString() ?? "",
     query.radiusKm,
   ].join(",");
   return withSearchCache(key, () => findMatchingRides(query));
 }
 
+// Route-only searches (no dates) can match a lot of rides; the soonest N is plenty.
+const MAX_SEARCH_RESULTS = 100;
+
 async function findMatchingRides(query: SearchRidesQuery) {
   const { originLat, originLng, destLat, destLng, earliestDeparture, latestDeparture, radiusKm } = query;
+
+  // A ride stays SCHEDULED for hours after it leaves (until the expiry job
+  // closes it) and can't be booked, so never list one that has departed —
+  // whatever window the caller asked for.
+  const now = new Date();
+  const from = earliestDeparture && earliestDeparture > now ? earliestDeparture : now;
 
   const latDelta = radiusKm / KM_PER_DEGREE_LAT;
   const originLngDelta = radiusKm / (KM_PER_DEGREE_LAT * Math.cos((originLat * Math.PI) / 180));
@@ -105,13 +114,14 @@ async function findMatchingRides(query: SearchRidesQuery) {
     where: {
       status: "SCHEDULED",
       seatsAvailable: { gt: 0 },
-      departureTime: { gte: earliestDeparture, lte: latestDeparture },
+      departureTime: { gte: from, ...(latestDeparture && { lte: latestDeparture }) },
       originLat: { gte: originLat - latDelta, lte: originLat + latDelta },
       originLng: { gte: originLng - originLngDelta, lte: originLng + originLngDelta },
       destLat: { gte: destLat - latDelta, lte: destLat + latDelta },
       destLng: { gte: destLng - destLngDelta, lte: destLng + destLngDelta },
     },
     orderBy: { departureTime: "asc" },
+    take: MAX_SEARCH_RESULTS,
   });
 }
 
