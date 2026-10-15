@@ -13,18 +13,38 @@ accepts `DRIVER`/`RIDER`. The one admin account is created directly (the seed
 script's `admin@example.com` / `password123`, or a manual `prisma.user.create`
 in production), then logs in through the ordinary `/api/auth/login` endpoint
 like anyone else. `src/modules/admin/` is read-only and `requireRole("ADMIN")`-gated
-on every route: `GET /api/admin/users` (no `passwordHash`), `GET /api/admin/rides`
-(every ride, any driver, any status, with a nested `driver` object), and
-`GET /api/admin/audit-logs?page=&pageSize=` (the same `AuditLog` table written by
-Bookings/Rides, paginated newest-first — no filtering by entity yet). On the
-frontend, `Layout.tsx` shows the "Users" / "All rides" / "Audit log" nav links
-only when `roles` includes `ADMIN`. Landing pages come from one helper,
+on every route. Every list — `GET /api/admin/users`, `/rides`, `/audit-logs`
+and `/vehicles` — is server-side paginated (`page`, `pageSize` ≤ 200, default
+50) and returns one envelope, `{ items, total, page, pageSize }`; rows are
+ordered newest-first (vehicles oldest-first) with `id` as a tiebreaker so pages
+never overlap. Filters (AND-combined, validated in `admin.schemas.ts`): users
+`role`, `q` (name/email/phone), `joinedFrom/joinedTo`; rides `status`, `q`
+(route label or driver name/email), `departureFrom/departureTo`; audit logs
+`entityType`, `action`, `from/to`; vehicles `status`. Date filters are
+`YYYY-MM-DD` read as **IST calendar days**, both ends inclusive
+(`lib/rideTime.ts`'s `istDayStart`/`istDayEndExclusive`); an inverted range or
+an impossible date is a 400. `/users` never returns `passwordHash`; `/rides`
+returns every ride with a nested `driver`. On the
+frontend, `Layout.tsx` shows the "Users" / "All rides" / "Vehicle review" /
+"Audit log" nav links only when `roles` includes `ADMIN`. Admin list pages share
+`hooks/useListParams.ts` (page, page size and filters live in the **URL query
+string**, so views survive refresh and can be linked; changing a filter resets to
+page 1; `useClampPage` jumps back from a past-the-end page) and
+`components/admin/` (`FilterBar`, `Pagination`, `ListMessages`). Landing pages come from one helper,
 `web/src/lib/homePath.ts`'s `homePathFor(roles)`, used by `/`, login and signup:
 admin-only → `/admin/users`, driver-only → `/rides/mine`, everyone else
 (riders) → `/rides`. "Search rides" (nav link and the `/rides` route, via
 `RiderOnly` in `main.tsx`) is rider-only, since only a `RIDER` can book; a
 driver who opens `/rides` is redirected home. The backend search endpoint itself
 stays open to any authenticated user.
+
+### Profile
+
+Every logged-in user has `/profile` (`ProfilePage.tsx`) and a name chip in the
+navbar linking to it. `GET /api/auth/me` now also returns `createdAt`, and
+`PATCH /api/auth/me` edits **name and phone only** (strict schema: `email`,
+`roles` or any other key is a 400 — email is the login identity, roles are an
+authorization decision). Password/email change is not implemented.
 
 ### Vehicles and admin verification
 
@@ -423,6 +443,9 @@ sync with what actually happened.
 
 ### Testing
 
+- **Running the integration suite empties the dev database** (`resetDb()` wipes every
+  user/ride/booking in the same `ride_sharing` DB `npm run dev` uses). Re-seed with
+  `npm run db:seed` afterwards.
 - Integration tests (`tests/integration/*.test.ts`) hit a **real** Postgres via Supertest against the actual `app` — no mocking the database. Unit tests (`tests/unit/*.test.ts`) must never touch it.
 - `vitest.config.ts` sets `fileParallelism: false` because all integration test files share one database. Each integration file must clean up via the shared `resetDb()` helper in `tests/integration/testDb.ts`, which deletes rows in FK-safe order (children before parents) — extend that helper, not each test file's own `beforeEach`, whenever a new table gets a foreign key, or you'll get a cross-suite foreign-key-violation failure that only reproduces when the full suite runs in a particular order.
 - This codebase follows strict TDD: a failing test is written and run first, then the minimal implementation, then refactor. Follow the same discipline for new endpoints.
