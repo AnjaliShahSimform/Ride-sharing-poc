@@ -41,6 +41,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # Redis browser at http://localhost:5540. Add a database with host `redis`,
+  # port 6379 (the compose-network name, not localhost).
+  redisinsight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # Local SMTP sink: accepts every email and shows it at http://localhost:8025
   # instead of delivering it anywhere.
   mailpit:
@@ -129,3 +142,4 @@ volumes:
   db_data:
   rabbitmq_data:
   minio_data:
+  redisinsight_data:

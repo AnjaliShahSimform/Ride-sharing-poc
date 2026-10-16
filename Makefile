@@ -2,7 +2,7 @@
 
 help:
 	@echo "make install    - install backend + frontend dependencies"
-	@echo "make dev        - start Postgres/Redis/RabbitMQ/Mailpit, then the backend dev server (localhost:3000)"
+	@echo "make dev        - start Postgres/Redis/RedisInsight/RabbitMQ/Mailpit/MinIO, then the backend dev server (localhost:3000)"
 	@echo "make dev-web    - start the frontend dev server (localhost:5173)"
 	@echo "make down       - stop all local containers"
 	@echo "make migrate    - apply pending Prisma migrations"
@@ -17,7 +17,7 @@ install:
 	cd web && npm install
 
 dev:
-	docker compose up -d db redis rabbitmq mailpit minio
+	docker compose up -d db redis redisinsight rabbitmq mailpit minio
 	npm run dev
 
 dev-web:

@@ -129,6 +129,7 @@ npm run prisma:migrate    # prisma migrate dev (creates + applies a migration)
 
 docker compose up -d db   # start Postgres only, for local `npm run dev` / tests
 docker compose up         # full stack (app + db) as it runs in production
+docker compose up -d redis redisinsight  # Redis + its browser UI at localhost:5540 (add a database with host `redis`, port 6379)
 
 npx tsc -p tsconfig.json --noEmit  # type-check without emitting
 
