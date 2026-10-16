@@ -4,7 +4,7 @@ import { apiFetch } from "../lib/api";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { initialOf, roleSummary } from "../lib/profile";
 
-// `end` so a link is active only on its own path: "/rides" must not light up on "/rides/mine".
+// `end` so a link is active only on its own path, not on any path beneath it.
 function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <NavLink

@@ -100,8 +100,8 @@ function placeholderPdf(lines: string[]): Buffer {
 // ---------------------------------------------------------------------------
 // Users. Every account shares SEED_PASSWORD. ADMIN has no self-service signup
 // path (auth.schemas.ts's signupSchema only accepts DRIVER/RIDER), so this
-// seed is where the admin account gets created. `aditi` holds both roles, to
-// show a user who posts rides and also books other drivers' rides.
+// seed is where the admin account gets created. Every user holds exactly one
+// role: an account is a driver, a rider or the admin, never a mix.
 // ---------------------------------------------------------------------------
 const USER_DEFS = {
   dara: { name: "Dara Driver", email: "dara.driver@example.com", phone: "9000000001", roles: [Role.DRIVER] },
@@ -110,7 +110,7 @@ const USER_DEFS = {
   kiran: { name: "Kiran Driver", email: "kiran.driver@example.com", phone: "9000000006", roles: [Role.DRIVER] },
   meera: { name: "Meera Driver", email: "meera.driver@example.com", phone: "9000000010", roles: [Role.DRIVER] },
   vikram: { name: "Vikram Driver", email: "vikram.driver@example.com", phone: "9000000011", roles: [Role.DRIVER] },
-  aditi: { name: "Aditi Both", email: "aditi.both@example.com", phone: "9000000016", roles: [Role.DRIVER, Role.RIDER] },
+  aditi: { name: "Aditi Driver", email: "aditi.driver@example.com", phone: "9000000016", roles: [Role.DRIVER] },
   rina: { name: "Rina Rider", email: "rina.rider@example.com", phone: "9000000003", roles: [Role.RIDER] },
   sam: { name: "Sam Rider", email: "sam.rider@example.com", phone: "9000000004", roles: [Role.RIDER] },
   neha: { name: "Neha Rider", email: "neha.rider@example.com", phone: "9000000007", roles: [Role.RIDER] },
@@ -258,7 +258,7 @@ const RIDE_SPECS: RideSpec[] = [
 
   // --- Meera (Punch 4 seats, XUV700 6 seats) — Tamil Nadu; two approved vehicles. ---
   { driver: "meera", vehicle: "punch", from: CHENNAI, to: COIMBATORE, day: 3, hour: 6, cost: "650.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "rohan", state: "CONFIRMED" }] },
-  { driver: "meera", vehicle: "xuv", from: CHENNAI, to: COIMBATORE, day: 11, hour: 7, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "aditi", state: "CONFIRMED" }, { rider: "arjun", state: "CONFIRMED" }] },
+  { driver: "meera", vehicle: "xuv", from: CHENNAI, to: COIMBATORE, day: 11, hour: 7, cost: "700.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3, bookings: [{ rider: "arjun", state: "CONFIRMED" }] },
   { driver: "meera", vehicle: "punch", from: BANGALORE, to: CHENNAI, day: -1, hour: 6, cost: "800.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "karan", state: "CONFIRMED" }, { rider: "tanvi", state: "RIDER_CANCELLED" }] },
   { driver: "meera", vehicle: "punch", from: COIMBATORE, to: CHENNAI, day: -2, hour: 9, cost: "650.00", status: RideStatus.CANCELLED, postedDaysBefore: 5, closedBySystem: true },
 
@@ -267,7 +267,7 @@ const RIDE_SPECS: RideSpec[] = [
   { driver: "vikram", vehicle: "seltos", from: LUCKNOW, to: DELHI, day: 14, hour: 5, cost: "1500.00", status: RideStatus.SCHEDULED, postedDaysBefore: 3 },
   { driver: "vikram", vehicle: "seltos", from: DELHI, to: LUCKNOW, day: -4, hour: 5, cost: "1400.00", status: RideStatus.CANCELLED, postedDaysBefore: 8, bookings: [{ rider: "sam", state: "CONFIRMED" }, { rider: "isha", state: "CONFIRMED" }] },
 
-  // --- Aditi (i20, 4 seats) — DRIVER + RIDER; her Kiger is still pending. ---
+  // --- Aditi (i20, 4 seats) — DRIVER; her Kiger is still pending. ---
   { driver: "aditi", vehicle: "i20", from: INDORE, to: BHOPAL, day: 5, hour: 7, cost: "400.00", status: RideStatus.SCHEDULED, postedDaysBefore: 4, bookings: [{ rider: "neha", state: "CONFIRMED" }] },
   { driver: "aditi", vehicle: "i20", from: BHOPAL, to: INDORE, day: -6, hour: 7, cost: "400.00", status: RideStatus.COMPLETED, postedDaysBefore: 6, bookings: [{ rider: "arjun", state: "CONFIRMED" }, { rider: "tanvi", state: "CONFIRMED" }] },
 ];
@@ -619,8 +619,7 @@ async function main() {
 
   console.log("Seed complete.");
   console.log(`  ${users} users, ${vehicles} vehicles, ${rides} rides, ${bookings} bookings, ${audits} audit entries in the database.`);
-  console.log("  Drivers: dara / ravi / priya / kiran / meera / vikram .driver@example.com");
-  console.log("  Both roles (driver + rider): aditi.both@example.com");
+  console.log("  Drivers: dara / ravi / priya / kiran / meera / vikram / aditi .driver@example.com");
   console.log("  Riders:  rina / sam / neha / arjun / isha / rohan / tanvi / karan .rider@example.com");
   console.log("  Admin:   admin@example.com");
   console.log(`  Password for all: ${SEED_PASSWORD}`);
