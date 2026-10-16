@@ -1,8 +1,25 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { initialOf, roleSummary } from "../lib/profile";
+
+// `end` so a link is active only on its own path: "/rides" must not light up on "/rides/mine".
+function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      end
+      className={({ isActive }) =>
+        `border-b-2 py-1 text-sm font-medium ${
+          isActive ? "border-blue-600 text-blue-600" : "border-transparent text-gray-600 hover:text-blue-600"
+        }`
+      }
+    >
+      {children}
+    </NavLink>
+  );
+}
 
 export function Layout() {
   const { data } = useCurrentUser();
@@ -24,52 +41,28 @@ export function Layout() {
       <nav className="flex flex-wrap items-center justify-between gap-y-3 border-b border-gray-200 bg-white px-6 py-4">
         <span className="text-lg font-semibold text-gray-900">RideShare</span>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          {isRider && (
-            <Link to="/rides" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-              Search rides
-            </Link>
-          )}
-          {isDriver && (
-            <Link to="/rides/new" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-              Post a ride
-            </Link>
-          )}
-          {isDriver && (
-            <Link to="/rides/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-              My rides
-            </Link>
-          )}
-          {isDriver && (
-            <Link to="/vehicles/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-              My vehicles
-            </Link>
-          )}
-          {isRider && (
-            <Link to="/bookings/mine" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-              My bookings
-            </Link>
-          )}
+          {isRider && <NavItem to="/rides">Search rides</NavItem>}
+          {isDriver && <NavItem to="/rides/new">Post a ride</NavItem>}
+          {isDriver && <NavItem to="/rides/mine">My rides</NavItem>}
+          {isDriver && <NavItem to="/vehicles/mine">My vehicles</NavItem>}
+          {isRider && <NavItem to="/bookings/mine">My bookings</NavItem>}
           {isAdmin && (
             <>
-              <Link to="/admin/users" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-                Users
-              </Link>
-              <Link to="/admin/rides" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-                All rides
-              </Link>
-              <Link to="/admin/vehicles" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-                Vehicle review
-              </Link>
-              <Link to="/admin/audit-logs" className="text-sm font-medium text-gray-600 hover:text-blue-600">
-                Audit log
-              </Link>
+              <NavItem to="/admin/users">Users</NavItem>
+              <NavItem to="/admin/rides">All rides</NavItem>
+              <NavItem to="/admin/vehicles">Vehicle review</NavItem>
+              <NavItem to="/admin/audit-logs">Audit log</NavItem>
             </>
           )}
           {data && (
-            <Link
+            <NavLink
               to="/profile"
               aria-label="Your profile"
-              className="flex items-center gap-2 rounded-full border border-gray-200 py-1 pl-1 pr-3 hover:bg-gray-50"
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 hover:bg-gray-50 ${
+                  isActive ? "border-blue-600 bg-blue-50" : "border-gray-200"
+                }`
+              }
             >
               <span
                 aria-hidden="true"
@@ -79,7 +72,7 @@ export function Layout() {
               </span>
               <span className="max-w-[10rem] truncate text-sm font-medium text-gray-800">{data.user.name}</span>
               <span className="hidden text-xs text-gray-500 sm:inline">{roleSummary(data.user.roles)}</span>
-            </Link>
+            </NavLink>
           )}
           <button
             onClick={handleLogout}
