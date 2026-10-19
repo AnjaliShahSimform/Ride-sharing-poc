@@ -73,6 +73,9 @@ export const signupLimiter = createLimiter({ name: "signup", windowMs: 60 * 60 *
 export const bookingLimiter = createLimiter({ name: "booking", windowMs: 60 * 1000, max: 10, key: "user" });
 export const searchLimiter = createLimiter({ name: "search", windowMs: 60 * 1000, max: 60, key: "user" });
 export const uploadLimiter = createLimiter({ name: "vehicleUpload", windowMs: 60 * 60 * 1000, max: 20, key: "user" });
+// Verify + resend. The 5-attempt cap and hourly send cap in the DB are the real
+// controls; this just stops a hammering client before it reaches the database.
+export const otpLimiter = createLimiter({ name: "otp", windowMs: 60 * 1000, max: 10, key: "user" });
 // The default limit for every authenticated WRITE (anything but GET/HEAD/OPTIONS),
 // mounted once per router right after requireAuth — so a route needs no limiter
 // of its own, and a new route is covered without anyone remembering to add one.

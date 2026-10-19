@@ -88,6 +88,21 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === "true")),
+  // Phone verification gate (SMS OTP at signup). Unset means "on". Only
+  // vitest.config.ts sets "false", so the existing suite — which signs users up
+  // and immediately uses the API — keeps passing. Off also means: no SMS sent,
+  // nobody gated. Never turn this off in production — server.ts warns if it is.
+  REQUIRE_PHONE_VERIFICATION: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  // How verification codes are delivered. "console" just logs the message (no
+  // account needed — local dev); "twilio" calls Twilio's REST API and needs the
+  // three TWILIO_* vars (sms.ts refuses to boot without them).
+  SMS_DRIVER: z.enum(["console", "twilio"]).default("console"),
+  TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),
+  TWILIO_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
+  TWILIO_FROM: z.string().optional().transform((v) => v || undefined),
   // S3-compatible object storage for vehicle documents (MinIO locally; any S3
   // API in production — no AWS account needed). All optional: the server boots
   // without them and only the document endpoints answer 503. Uploads go to
@@ -118,5 +133,6 @@ export const env = {
   ...parsed.data,
   NOTIFICATIONS_ENABLED: parsed.data.NOTIFICATIONS_ENABLED ?? true,
   REQUIRE_APPROVED_VEHICLE: parsed.data.REQUIRE_APPROVED_VEHICLE ?? true,
+  REQUIRE_PHONE_VERIFICATION: parsed.data.REQUIRE_PHONE_VERIFICATION ?? true,
   REDIS_URL: parsed.data.REDIS_ENABLED === false ? undefined : parsed.data.REDIS_URL,
 };

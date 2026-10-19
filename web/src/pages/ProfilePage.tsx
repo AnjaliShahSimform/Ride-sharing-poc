@@ -24,7 +24,6 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -40,7 +39,6 @@ export function ProfilePage() {
 
   function startEditing() {
     setName(user.name);
-    setPhone(user.phone);
     setError(null);
     setSaved(false);
     setEditing(true);
@@ -52,14 +50,11 @@ export function ProfilePage() {
     setError(null);
 
     const nextName = name.trim();
-    const nextPhone = phone.trim();
     if (!nextName) return setError("Name is required");
-    if (nextPhone.length < 7) return setError("Phone must be a valid number");
 
     // Send only what changed.
-    const body: Partial<Pick<CurrentUser, "name" | "phone">> = {};
+    const body: { name?: string } = {};
     if (nextName !== user.name) body.name = nextName;
-    if (nextPhone !== user.phone) body.phone = nextPhone;
     if (Object.keys(body).length === 0) {
       setEditing(false);
       return;
@@ -124,7 +119,8 @@ export function ProfilePage() {
               <span className="ml-2 text-xs text-gray-400">can't be changed</span>
             </Row>
             <Row label="Phone">
-              <input aria-label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} className={inputClass} />
+              <span className="text-gray-600">{user.phone}</span>
+              <span className="ml-2 text-xs text-gray-400">can't be changed</span>
             </Row>
             <div className="flex gap-2 pt-4">
               <button
@@ -149,7 +145,12 @@ export function ProfilePage() {
             <dl className="divide-y divide-gray-100">
               <Row label="Name">{user.name}</Row>
               <Row label="Email">{user.email}</Row>
-              <Row label="Phone">{user.phone}</Row>
+              <Row label="Phone">
+                {user.phone}
+                {user.phoneVerified !== false && (
+                  <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Verified</span>
+                )}
+              </Row>
               <Row label="Roles">{user.roles.map(roleLabel).join(", ")}</Row>
               <Row label="Member since">
                 {user.createdAt

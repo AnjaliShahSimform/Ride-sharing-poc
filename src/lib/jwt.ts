@@ -4,6 +4,9 @@ import { env } from "../config/env";
 export interface JwtPayload {
   sub: string; // user id — "sub" (subject) is the JWT-standard claim name for it
   roles: string[];
+  // false = the account hasn't verified its phone (requireAuth blocks it). A
+  // token with no claim predates phone verification and counts as verified.
+  phoneVerified?: boolean;
 }
 
 export function signToken(payload: JwtPayload): string {

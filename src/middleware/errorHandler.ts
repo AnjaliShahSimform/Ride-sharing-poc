@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { AppError } from "../lib/AppError";
+import { AppError, TooManyRequestsError } from "../lib/AppError";
 import { logger } from "../lib/logger";
 
 // Express recognizes an error-handling middleware ONLY by its arity: exactly
@@ -15,6 +15,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       details: err.flatten().fieldErrors,
     });
     return;
+  }
+
+  if (err instanceof TooManyRequestsError && err.retryAfterSeconds) {
+    res.set("Retry-After", String(err.retryAfterSeconds));
   }
 
   if (err instanceof AppError) {

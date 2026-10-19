@@ -1,14 +1,27 @@
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { env } from "../../config/env";
 import { ConflictError, UnauthenticatedError } from "../../lib/AppError";
 import { signToken } from "../../lib/jwt";
+import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import * as phoneVerification from "./phoneVerification.service";
 import * as refreshTokens from "./refreshToken.service";
 import type { LoginInput, SignupInput, UpdateProfileInput } from "./auth.schemas";
 
 const SALT_ROUNDS = 10;
 
-function toPublicUser(user: { id: string; name: string; email: string; phone: string; roles: string[]; createdAt: Date }) {
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  roles: string[];
+  createdAt: Date;
+  phoneVerifiedAt: Date | null;
+};
+
+function toPublicUser(user: UserRow) {
   // Never let passwordHash leave the service layer, under any circumstance.
   return {
     id: user.id,
@@ -17,7 +30,14 @@ function toPublicUser(user: { id: string; name: string; email: string; phone: st
     phone: user.phone,
     roles: user.roles,
     createdAt: user.createdAt,
+    phoneVerified: phoneVerification.isPhoneVerified(user),
   };
+}
+
+// Every access token carries the verification state, so requireAuth can gate
+// without a database read. Re-signed whenever that state changes.
+function signSessionToken(user: Pick<UserRow, "id" | "roles" | "phoneVerifiedAt">) {
+  return signToken({ sub: user.id, roles: user.roles, phoneVerified: phoneVerification.isPhoneVerified(user) });
 }
 
 export async function signup(input: SignupInput) {
@@ -38,8 +58,16 @@ export async function signup(input: SignupInput) {
     },
   });
 
-  const token = signToken({ sub: user.id, roles: user.roles });
+  const token = signSessionToken(user);
   const refreshToken = await refreshTokens.issue(user.id);
+
+  // Best effort: the account exists either way. If the SMS fails the user lands
+  // on the verify screen and presses Resend (the cause is already logged).
+  if (env.REQUIRE_PHONE_VERIFICATION) {
+    await phoneVerification
+      .sendCode(user.id, user.phone)
+      .catch((err) => logger.warn({ err, userId: user.id }, "Signup verification code was not sent"));
+  }
   return { user: toPublicUser(user), token, refreshToken };
 }
 
@@ -59,7 +87,7 @@ export async function login(input: LoginInput) {
     throw invalidCredentials;
   }
 
-  const token = signToken({ sub: user.id, roles: user.roles });
+  const token = signSessionToken(user);
   await refreshTokens.deleteExpired(user.id);
   const refreshToken = await refreshTokens.issue(user.id);
   return { user: toPublicUser(user), token, refreshToken };
@@ -79,7 +107,7 @@ export async function refresh(rawRefreshToken: string | undefined) {
   if (!user) {
     throw new UnauthenticatedError("User no longer exists");
   }
-  const token = signToken({ sub: user.id, roles: user.roles });
+  const token = signSessionToken(user);
   return { user: toPublicUser(user), token, refreshToken };
 }
 
@@ -98,11 +126,10 @@ export async function getById(userId: string) {
 }
 
 export async function updateProfile(userId: string, input: UpdateProfileInput) {
-  // Prisma treats an undefined field as "leave unchanged".
   try {
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { name: input.name, phone: input.phone },
+      data: { name: input.name },
     });
     return toPublicUser(user);
   } catch (err) {
@@ -112,4 +139,15 @@ export async function updateProfile(userId: string, input: UpdateProfileInput) {
     }
     throw err;
   }
+}
+
+export async function verifyPhone(userId: string, code: string) {
+  await phoneVerification.verifyCode(userId, code);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  // New token: the old one still says phoneVerified:false.
+  return { user: toPublicUser(user), token: signSessionToken(user) };
+}
+
+export function resendPhoneCode(userId: string) {
+  return phoneVerification.resend(userId);
 }

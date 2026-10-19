@@ -38,8 +38,27 @@ export class ConflictError extends AppError {
 }
 
 export class TooManyRequestsError extends AppError {
-  constructor(message = "Too many requests, please try again later") {
+  // retryAfterSeconds, when known, becomes a Retry-After header (errorHandler).
+  constructor(
+    message = "Too many requests, please try again later",
+    public retryAfterSeconds?: number,
+  ) {
     super(429, message);
+  }
+}
+
+// 403 with its own class name so the frontend can tell "verify your phone"
+// apart from an ordinary "not allowed" (errorHandler sends the class name).
+export class PhoneNotVerifiedError extends AppError {
+  constructor() {
+    super(403, "Verify your phone number to continue");
+  }
+}
+
+// The SMS provider failed or rejected the message (the cause is logged).
+export class SmsDeliveryError extends AppError {
+  constructor() {
+    super(502, "We couldn't send the verification code. Please try again in a moment.");
   }
 }
 
