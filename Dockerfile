@@ -1,4 +1,7 @@
 FROM node:20-alpine AS build
+# Prisma's engines need OpenSSL; alpine ships without it, so Prisma falls back to
+# openssl-1.1.x and the schema engine fails to load.
+RUN apk add --no-cache openssl
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -7,6 +10,7 @@ RUN npx prisma generate
 RUN npm run build
 
 FROM node:20-alpine AS runtime
+RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
