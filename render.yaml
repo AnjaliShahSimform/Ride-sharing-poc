@@ -5,9 +5,8 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Same pattern as docker-compose.yml's app service: apply pending
-    # migrations before the server starts accepting traffic.
-    dockerCommand: sh -c "npx prisma migrate deploy && node dist/server.js"
+    # No dockerCommand: the Dockerfile's CMD applies pending migrations and
+    # then starts the server (Render doesn't shell-parse dockerCommand).
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

@@ -16,4 +16,6 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+# Apply pending migrations, then start. Lives here (not in render.yaml's
+# dockerCommand) because Render doesn't shell-parse that field the way compose does.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
