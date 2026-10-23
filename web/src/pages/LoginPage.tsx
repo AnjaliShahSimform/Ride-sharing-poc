@@ -15,12 +15,12 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     try {
-      const { user } = await apiFetch<{ user: { roles?: string[] } }>("/api/auth/login", {
+      const { user } = await apiFetch<{ user: { roles?: string[]; phoneVerified?: boolean } }>("/api/auth/login", {
         method: "POST",
         body: { email, password },
       });
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-      navigate(homePathFor(user.roles));
+      navigate(user.phoneVerified === false ? "/verify-phone" : homePathFor(user.roles));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     }

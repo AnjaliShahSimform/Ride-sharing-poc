@@ -13,7 +13,9 @@ const options: swaggerJsdoc.Options = {
       description:
         "Scheduled ride-sharing / carpool-matching API. Auth is cookie-based (httpOnly `token` cookie, not a bearer token) — " +
         "use the 'Try it out' flow in order (signup/login first) so the browser's cookie jar carries the session into later calls. " +
-        "Mutating requests (POST/PATCH/PUT/DELETE) also require an `X-Requested-With: XMLHttpRequest` header.",
+        "Mutating requests (POST/PATCH/PUT/DELETE) also require an `X-Requested-With: XMLHttpRequest` header. " +
+        "Every authenticated route returns 403 with `{ \"error\": \"PhoneNotVerifiedError\" }` for an account that has not yet verified its phone, " +
+        "except `GET/PATCH /api/auth/me`, `POST /api/auth/verify-phone` and `POST /api/auth/verify-phone/resend`.",
     },
     servers: [{ url: `http://localhost:${env.PORT}`, description: "Local dev server" }],
     components: {

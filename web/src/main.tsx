@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Navigate, createBrowserRouter, RouterProvider } from "react-router-dom";
+import { Navigate, Outlet, createBrowserRouter, RouterProvider } from "react-router-dom";
 import { queryClient } from "./lib/queryClient";
 import { RequireAuth } from "./components/RequireAuth";
 import { Layout } from "./components/Layout";
@@ -15,6 +15,7 @@ import { MyRidesPage } from "./pages/MyRidesPage";
 import { MyBookingsPage } from "./pages/MyBookingsPage";
 import { MyVehiclesPage } from "./pages/MyVehiclesPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { VerifyPhonePage } from "./pages/VerifyPhonePage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminRidesPage } from "./pages/admin/AdminRidesPage";
 import { AdminVehiclesPage } from "./pages/admin/AdminVehiclesPage";
@@ -42,28 +43,34 @@ const router = createBrowserRouter([
   {
     element: (
       <RequireAuth>
-        <Layout />
+        <Outlet />
       </RequireAuth>
     ),
     children: [
-      { path: "/", element: <HomeRedirect /> },
+      { path: "/verify-phone", element: <VerifyPhonePage /> },
       {
-        path: "/rides",
-        element: (
-          <RiderOnly>
-            <SearchRidesPage />
-          </RiderOnly>
-        ),
+        element: <Layout />,
+        children: [
+          { path: "/", element: <HomeRedirect /> },
+          {
+            path: "/rides",
+            element: (
+              <RiderOnly>
+                <SearchRidesPage />
+              </RiderOnly>
+            ),
+          },
+          { path: "/rides/new", element: <PostRidePage /> },
+          { path: "/rides/mine", element: <MyRidesPage /> },
+          { path: "/bookings/mine", element: <MyBookingsPage /> },
+          { path: "/vehicles/mine", element: <MyVehiclesPage /> },
+          { path: "/profile", element: <ProfilePage /> },
+          { path: "/admin/users", element: <AdminUsersPage /> },
+          { path: "/admin/rides", element: <AdminRidesPage /> },
+          { path: "/admin/vehicles", element: <AdminVehiclesPage /> },
+          { path: "/admin/audit-logs", element: <AdminAuditLogPage /> },
+        ],
       },
-      { path: "/rides/new", element: <PostRidePage /> },
-      { path: "/rides/mine", element: <MyRidesPage /> },
-      { path: "/bookings/mine", element: <MyBookingsPage /> },
-      { path: "/vehicles/mine", element: <MyVehiclesPage /> },
-      { path: "/profile", element: <ProfilePage /> },
-      { path: "/admin/users", element: <AdminUsersPage /> },
-      { path: "/admin/rides", element: <AdminRidesPage /> },
-      { path: "/admin/vehicles", element: <AdminVehiclesPage /> },
-      { path: "/admin/audit-logs", element: <AdminAuditLogPage /> },
     ],
   },
 ]);

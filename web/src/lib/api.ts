@@ -1,6 +1,8 @@
 // The CSRF header name/value must match the backend's src/middleware/csrf.ts
 // exactly. Duplicated here on purpose — this package shares no imports with
 // the root src/ (separate deployable, no monorepo tooling).
+import { queryClient } from "./queryClient";
+
 const CSRF_HEADER_NAME = "x-requested-with";
 const CSRF_HEADER_VALUE = "XMLHttpRequest";
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -9,10 +11,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
 export class ApiError extends Error {
   status: number;
+  // The backend's error class name (e.g. "PhoneNotVerifiedError").
+  code?: string;
+  // From a 429's Retry-After header.
+  retryAfterSeconds?: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string, retryAfterSeconds?: number) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -89,7 +97,13 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!res.ok) {
     const message = data?.message ?? messageFromDetails(data?.details) ?? data?.error ?? "Request failed";
-    throw new ApiError(res.status, message);
+    // A stale tab (or a session that just became gated): re-read the current
+    // user so RequireAuth sees phoneVerified:false and sends them to /verify-phone.
+    if (data?.error === "PhoneNotVerifiedError") {
+      void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    }
+    const retryAfter = Number(res.headers?.get("Retry-After"));
+    throw new ApiError(res.status, message, data?.error, retryAfter > 0 ? retryAfter : undefined);
   }
 
   return data as T;

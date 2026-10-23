@@ -443,7 +443,7 @@ async function main() {
     const user = await prisma.user.upsert({
       where: { email: def.email },
       update: {},
-      create: { name: def.name, email: def.email, phone: def.phone, passwordHash, roles: [...def.roles], createdAt: daysFromNow(-60, 10) },
+      create: { name: def.name, email: def.email, phone: def.phone, passwordHash, roles: [...def.roles], createdAt: daysFromNow(-60, 10), phoneVerifiedAt: daysFromNow(-60, 10) },
     });
     ids[key] = user.id;
   }

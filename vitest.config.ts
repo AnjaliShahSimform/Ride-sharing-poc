@@ -17,6 +17,9 @@ export default defineConfig({
       NOTIFICATIONS_ENABLED: "false",
       REDIS_ENABLED: "false",
       REQUIRE_APPROVED_VEHICLE: "false",
+      // Signups in the existing suite use the API straight away; the gate and
+      // the SMS send are off for it by design.
+      REQUIRE_PHONE_VERIFICATION: "false",
     },
     fileParallelism: false, // integration tests share one real database
     exclude: [...configDefaults.exclude, "web/**"],

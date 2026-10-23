@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports. The `ADMIN` role, previously schema-only, is now wired to a read-only `src/modules/admin/` module (see "Admin module" below). Vehicle verification (vehicles, RC/licence documents, admin review, vehicle linked to rides) is complete per [2026-10-14-vehicle-verification-design.md](docs/superpowers/specs/2026-10-14-vehicle-verification-design.md).
+A scheduled ride-sharing / carpool-matching POC (BlaBlaCar-style, not Uber-style — no live GPS, no dispatch, no surge pricing). The authoritative design document is [docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md](docs/superpowers/specs/2026-09-26-ride-sharing-matching-design.md) — read it before making architectural changes; it documents the two hard requirements (indexed proximity+time matching, race-safe last-seat booking), the full data model, and what's explicitly out of scope. The doc's §9 "Delivery order" tracks module-by-module build sequence: Auth is complete; Rides is complete except `GET /:id`; Bookings is complete (race-safe seat booking, cancellation, cost splitting, contact visibility on confirmed match) per [2026-10-09-booking-module-design.md](docs/superpowers/specs/2026-10-09-booking-module-design.md); the `AuditLog` wiring is complete; the frontend (`web/`) is complete for everything the backend currently supports. The `ADMIN` role, previously schema-only, is now wired to a read-only `src/modules/admin/` module (see "Admin module" below). Vehicle verification (vehicles, RC/licence documents, admin review, vehicle linked to rides) is complete per [2026-10-14-vehicle-verification-design.md](docs/superpowers/specs/2026-10-14-vehicle-verification-design.md). Phone verification (SMS OTP at signup) is complete per [2026-10-15-phone-verification-design.md](docs/superpowers/specs/2026-10-15-phone-verification-design.md).
 
 ### Admin module
 
@@ -42,9 +42,95 @@ stays open to any authenticated user.
 
 Every logged-in user has `/profile` (`ProfilePage.tsx`) and a name chip in the
 navbar linking to it. `GET /api/auth/me` now also returns `createdAt`, and
-`PATCH /api/auth/me` edits **name and phone only** (strict schema: `email`,
+`PATCH /api/auth/me` edits **name only** (strict schema: `email`, `phone`,
 `roles` or any other key is a 400 — email is the login identity, roles are an
-authorization decision). Password/email change is not implemented.
+authorization decision). The phone is fixed at signup because it is the
+verified number (see "Phone verification"). Password/email change is not
+implemented.
+
+### Phone verification (SMS OTP)
+
+Design: [spec](docs/superpowers/specs/2026-10-15-phone-verification-design.md),
+[plan](docs/superpowers/plans/2026-10-15-phone-verification.md). A new account
+must prove it controls its phone: signup creates the user **unverified**,
+issues the cookies as usual, then texts a 6-digit code; until it is entered the
+account can log in but reach nothing except `/verify-phone`. Phone only (no
+email OTP). Phones are validated as Indian mobiles and stored as
+`+91XXXXXXXXXX` (`src/lib/phone.ts`); existing rows were backfilled as verified
+by the migration and keep their old format. Logic is
+`src/modules/auth/phoneVerification.service.ts`.
+
+- **`PhoneVerification`** (one row per user): `codeHash` is an HMAC-SHA256 of
+  `userId:code` keyed with `JWT_SECRET` — never the code, and not a plain hash,
+  which a million-value code space would reverse instantly. Code valid 10 min,
+  5 wrong attempts, 60 s resend cooldown, 5 sends/hour (`sendCount` +
+  `sendWindowStart`). Resend replaces the code and resets `attempts`. Success
+  sets `User.phoneVerifiedAt`, deletes the row and re-signs the access cookie.
+- **Verify is row-locked.** `verifyCode` runs `SELECT … FOR UPDATE` on the
+  user's `PhoneVerification` row, so parallel guesses are counted one by one and
+  can't beat the attempt cap (same idea as `bookSeat`); `sendCode` takes the same
+  lock for the cooldown/hourly check. A wrong guess's `attempts` increment must
+  **commit**, so the transaction *returns* an outcome (`OK | NO_CODE | EXPIRED |
+  LOCKED | WRONG`) and only afterwards turns it into an error — throwing inside
+  would roll the increment back and make the cap meaningless. Hashes compare with
+  `timingSafeEqual`. A wrong code is 400, a locked one 429; already verified 409.
+- **The gate is `requireAuth` itself**, via a `phoneVerified` claim in the access
+  JWT: `phoneVerified === false` → `PhoneNotVerifiedError` (403, body
+  `error: "PhoneNotVerifiedError"`), so every present and future route is covered
+  by default (same philosophy as `writeLimiter`). Only `requireAuthAllowUnverified`
+  skips it, used by exactly `GET/PATCH /me`, `POST /verify-phone` and
+  `POST /verify-phone/resend` (both also behind `writeLimiter` + a per-user
+  `otpLimiter`, 10/min; the DB caps are the real control). A token with **no**
+  claim counts as verified (pre-feature tokens, ≤ 15 min, belong to grandfathered
+  users). `ADMIN` is exempt (never signs up). The claim is computed by
+  `isPhoneVerified()` and re-read from the DB on login/refresh/verify; `/me`,
+  login, signup and refresh all return `phoneVerified`. **`REQUIRE_PHONE_VERIFICATION`**
+  (default on): off means nobody is gated and no SMS is sent; only
+  `vitest.config.ts` sets it `false` (so the existing signup tests keep passing
+  untouched), and the server warns at boot if it is off. Never set it false in
+  production.
+- **`SMS_DRIVER=console|twilio`** (`src/lib/sms.ts`, default `console`). Console
+  logs the message **including the code** — with it, the OTP appears in the
+  `npm run dev` terminal output (the boot warns if it's used with
+  `NODE_ENV=production`). `twilio` is a plain `fetch` to Twilio's Messages API
+  (no SDK); it needs `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM` and
+  throws at boot without them. Any send failure becomes a 502 `SmsDeliveryError`
+  (cause logged only). Twilio *trial* accounts only text numbers verified in the
+  Twilio console, prefix messages "Sent from your Twilio trial account", and
+  whether they deliver to India without DLT registration is **unconfirmed**.
+- **SMS is sent directly from the request after the DB write commits, not via
+  the outbox** (a code is useless minutes later, and the outbox is email-shaped).
+  If the send fails the code row is still valid: at signup the failure is logged
+  and signup succeeds; on Resend the user gets the 502 and retries after the
+  cooldown.
+- **Retry-After and CORS.** The rate-limiter 429s, the resend-cooldown 429 and
+  the hourly-cap 429 carry `Retry-After`; the wrong-attempts LOCKED 429 does not
+  (the user must request a new code, there's nothing to wait out). It isn't a
+  CORS-safelisted header, so `src/app.ts`'s `cors()` sets
+  `exposedHeaders: ["Retry-After"]` — without it the browser can't read it
+  cross-origin and the Resend countdown on `VerifyPhonePage` breaks.
+  `web/src/lib/api.ts` reads it with `res.headers?.get("Retry-After")` (optional
+  chaining, because the existing `api.test.ts` mocks have no `headers`).
+- **Frontend:** `RequireAuth` sends an unverified user to `/verify-phone` from
+  every page and a verified one away from it; `apiFetch` invalidates the
+  `currentUser` query on a `PhoneNotVerifiedError` 403 so a stale tab lands there
+  too. `VerifyPhonePage` shows the masked number, a Resend button with the
+  cooldown, and a log-out link.
+- **Known limits** (spec §10): a wrong number at signup can't be corrected (the
+  phone is fixed, so that account can never verify — sign up again with another
+  email, or an admin edits the row; the cheap fix, if it bites, is to allow
+  changing it while unverified); no one-account-per-phone rule (existing data has
+  duplicates); someone can register another person's number and make them
+  receive a code (only the signup limit and per-user resend cap mitigate it —
+  SMS-pumping protection is out of scope).
+- **Testing it by hand.** The rate limiters are Redis-backed and persist across
+  dev-server restarts, and `signupLimiter` (5/hour/IP) also counts requests that
+  fail validation, so repeated hands-on signups hit it. Clear only the limiter
+  keys: `docker exec ride-sharing-poc-redis-1 sh -c "redis-cli --scan --pattern
+  'rl:*' | xargs -r redis-cli del"`. To get a throwaway account's code without
+  the log, brute-force the stored `codeHash` against all 10^6 codes with the
+  HMAC and `JWT_SECRET` — which is why that secret matters. Delete the throwaway
+  users afterwards.
 
 ### Vehicles and admin verification
 
@@ -138,6 +224,8 @@ cd web && npm test        # frontend test suite (Vitest + React Testing Library)
 cd web && npm run build   # frontend production build
 ```
 
+`SMS_DRIVER=console` (the default) means the signup/resend OTP appears in the `npm run dev` terminal output — no SMS account needed locally.
+
 `npm run lint` is defined in package.json but there is no `eslint.config.*` in the repo yet, so it currently fails with "couldn't find configuration file" — set one up before relying on it.
 
 ### API docs
@@ -169,7 +257,7 @@ Each domain lives under `src/modules/<name>/` with four files following the same
 
 ### Three distinct authorization layers — don't conflate them
 
-1. **Authentication** (`requireAuth` in `src/middleware/auth.middleware.ts`) — verifies the JWT read from the `token` httpOnly cookie (not an `Authorization` header — see "Cookie-based auth" below), populates `req.user` (`{ sub, roles }`).
+1. **Authentication** (`requireAuth` in `src/middleware/auth.middleware.ts`) — verifies the JWT read from the `token` httpOnly cookie (not an `Authorization` header — see "Cookie-based auth" below), populates `req.user` (`{ sub, roles, phoneVerified? }`). It also rejects an account whose phone isn't verified with a 403 (see "Phone verification (SMS OTP)"); only `requireAuthAllowUnverified` lets such an account through.
 2. **RBAC / route authorization** (`requireRole(...)`, same file) — "can this *role* call this *route* at all?" Applied per-route.
 3. **Ownership / record authorization** — "can this *specific user* act on this *specific record*?" Lives inside the service layer (e.g. `rides.service.ts`'s `transitionRide` checks `ride.driverId !== driverId`), not in middleware, because it needs the record loaded first. This is what prevents IDOR (a rider hitting another user's resource by guessing its ID).
 
@@ -215,7 +303,9 @@ Rows live in `RefreshToken` (only the SHA-256 is stored), logic in
   access cookie is usually expired). Rotation is one conditional `UPDATE … WHERE
   revokedAt IS NULL AND expiresAt > now()` plus the new row in the same
   transaction, so concurrent refreshes with one token have exactly one winner.
-  Roles are re-read from the DB, so role changes apply on refresh.
+  Roles are re-read from the DB, so role changes apply on refresh; so is
+  `phoneVerifiedAt`, so the re-signed access token's `phoneVerified` claim comes
+  from the DB.
 - **Reuse detection.** A token presented again after being *rotated* is either a
   second tab or a replay. Within `REFRESH_REUSE_GRACE_SECONDS` (10) it only gets
   a fresh access cookie (the winning tab's refresh cookie is already in the
@@ -244,7 +334,9 @@ true`; it must be set to the real deployed frontend's origin in production
 (`render.yaml` prompts for it, `sync: false`) or every credentialed
 cross-origin request from the actual frontend will silently fail CORS —
 the server starts fine either way, since the env var has a dev-only
-default, so a missing/wrong value doesn't surface as a startup error.
+default, so a missing/wrong value doesn't surface as a startup error. It
+also sets `exposedHeaders: ["Retry-After"]` so the browser can read a 429's
+wait time.
 
 `docker compose up`'s full-stack `app` service runs with `NODE_ENV:
 production` over plain `http://localhost:3000`, which means the
@@ -272,9 +364,11 @@ boot, requests would hang or limiting would be disabled permanently.
 authenticated write** (anything but GET/HEAD/OPTIONS): `writeLimiter`, 20 per
 minute, mounted once per router right after `requireAuth` (rides, bookings,
 vehicles, admin) — so a route needs no limiter of its own and a new route is
-covered automatically. Per-route overrides are built with `createLimiter({
+covered automatically. (The auth router instead mounts it per route — `PATCH /me`
+and both verify-phone routes — after `requireAuthAllowUnverified`.) Per-route overrides are built with `createLimiter({
 windowMs, max, key })` and added to a route's middleware chain (`loginLimiter`,
-`signupLimiter`, `bookingLimiter`, `searchLimiter`, `uploadLimiter`). A request
+`signupLimiter`, `refreshLimiter`, `otpLimiter` (10/min per user, on verify-phone
+and its resend), `bookingLimiter`, `searchLimiter`, `uploadLimiter`). A request
 matching several is counted by each, so a route override can only *tighten* a
 default; to make a route looser, exempt it in that default's `skip`
 (`globalLimiter` or `writeLimiter`). `key: "user"`
@@ -452,3 +546,4 @@ sync with what actually happened.
 - This codebase follows strict TDD: a failing test is written and run first, then the minimal implementation, then refactor. Follow the same discipline for new endpoints.
 - Exception: the Booking module deliberately skips this discipline — no automated tests were written for it beyond the one required concurrency test in `bookSeat`. This was a scoped, explicit decision for this module, not an oversight; see the Global Constraints section of [2026-10-09-booking-module.md](docs/superpowers/plans/2026-10-09-booking-module.md) for the reasoning.
 - Exception: vehicle verification adds no automated tests (see "Vehicles and admin verification"); `tests/integration/testDb.ts` needs no change because `resetDb()` deletes rides before users — `RideVehicle.ride`, `Vehicle.owner` and `VehicleDocument.vehicle` cascade, while `RideVehicle.vehicle` is RESTRICT (safe only because rides go first).
+- Exception: phone verification adds no automated tests (explicit decision, like Bookings and refresh tokens); it was verified by hand with the `console` SMS driver. The existing signup/login tests keep passing because `vitest.config.ts` sets `REQUIRE_PHONE_VERIFICATION=false` (no gate, no SMS), exactly like `REQUIRE_APPROVED_VEHICLE`.

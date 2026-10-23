@@ -51,7 +51,24 @@ model User {
   bookings      Booking[]
   vehicles      Vehicle[]
   refreshTokens RefreshToken[]
+  phoneVerifiedAt   DateTime?
+  phoneVerification PhoneVerification?
   createdAt     DateTime @default(now())
+}
+
+// One pending SMS code per user (src/modules/auth/phoneVerification.service.ts).
+// Only an HMAC of the code is stored, never the code. The row is deleted on
+// success; a resend overwrites it (new code, attempts reset).
+model PhoneVerification {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash        String
+  expiresAt       DateTime
+  attempts        Int      @default(0)
+  lastSentAt      DateTime
+  sendCount       Int      @default(1)
+  sendWindowStart DateTime
 }
 
 // One row per issued refresh token (src/modules/auth/refreshToken.service.ts).

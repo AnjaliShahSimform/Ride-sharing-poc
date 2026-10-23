@@ -12,3 +12,9 @@ export function roleSummary(roles: readonly string[]): string {
 export function initialOf(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?";
 }
+
+// "+919876543210" -> "+91 ••••• ••210"; a legacy "9000000003" -> "••••• ••003".
+export function maskPhone(phone: string): string {
+  const tail = `••••• ••${phone.slice(-3)}`;
+  return phone.startsWith("+91") ? `+91 ${tail}` : tail;
+}

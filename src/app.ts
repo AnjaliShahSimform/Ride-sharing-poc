@@ -31,6 +31,9 @@ app.use(
       callback(null, origin === env.FRONTEND_ORIGIN);
     },
     credentials: true,
+    // Not CORS-safelisted, so without this the browser hides a 429's
+    // Retry-After from the frontend (cross-origin) and the resend countdown breaks.
+    exposedHeaders: ["Retry-After"],
   }),
 );
 // After cors so a 429 still carries CORS headers (the browser can read it),

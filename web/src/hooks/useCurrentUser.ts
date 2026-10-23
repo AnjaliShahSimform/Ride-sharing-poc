@@ -8,6 +8,9 @@ export interface CurrentUser {
   phone: string;
   roles: string[];
   createdAt?: string;
+  // false until the phone is verified. Optional so accounts/tests that predate
+  // the field read as verified (RequireAuth only redirects on === false).
+  phoneVerified?: boolean;
 }
 
 export function useCurrentUser() {

@@ -67,6 +67,14 @@ services:
         sync: false
       - key: S3_REGION
         value: us-east-1
+      - key: SMS_DRIVER
+        value: twilio
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM
+        sync: false
   - type: web
     name: ride-sharing-poc-web
     runtime: static

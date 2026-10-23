@@ -55,3 +55,14 @@ export async function logoutHandler(req: Request, res: Response) {
   clearRefreshCookie(res);
   res.status(200).json({ message: "Logged out" });
 }
+
+export async function verifyPhoneHandler(req: Request, res: Response) {
+  const { user, token } = await authService.verifyPhone(req.user!.sub, req.body.code);
+  setAuthCookie(res, token);
+  res.status(200).json({ user });
+}
+
+export async function resendPhoneCodeHandler(req: Request, res: Response) {
+  const { resendAfterSeconds } = await authService.resendPhoneCode(req.user!.sub);
+  res.status(200).json({ message: "Code sent", resendAfterSeconds });
+}

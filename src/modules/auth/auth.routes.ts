@@ -1,10 +1,19 @@
 import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
-import { requireAuth } from "../../middleware/auth.middleware";
-import { loginLimiter, refreshLimiter, signupLimiter, writeLimiter } from "../../middleware/rateLimit";
+import { requireAuthAllowUnverified } from "../../middleware/auth.middleware";
+import { loginLimiter, otpLimiter, refreshLimiter, signupLimiter, writeLimiter } from "../../middleware/rateLimit";
 import { validateBody } from "../../middleware/validate";
-import { loginHandler, logoutHandler, meHandler, refreshHandler, signupHandler, updateMeHandler } from "./auth.controller";
-import { loginSchema, signupSchema, updateProfileSchema } from "./auth.schemas";
+import {
+  loginHandler,
+  logoutHandler,
+  meHandler,
+  refreshHandler,
+  resendPhoneCodeHandler,
+  signupHandler,
+  updateMeHandler,
+  verifyPhoneHandler,
+} from "./auth.controller";
+import { loginSchema, signupSchema, updateProfileSchema, verifyPhoneSchema } from "./auth.schemas";
 
 export const authRouter = Router();
 
@@ -21,6 +30,7 @@ export const authRouter = Router();
  *         phone: { type: string }
  *         roles: { type: array, items: { type: string, enum: [DRIVER, RIDER, ADMIN] } }
  *         createdAt: { type: string, format: date-time }
+ *         phoneVerified: { type: boolean }
  *     Error:
  *       type: object
  *       properties:
@@ -150,14 +160,14 @@ authRouter.post("/refresh", refreshLimiter, asyncHandler(refreshHandler));
  *                 user: { $ref: '#/components/schemas/User' }
  *       401: { description: No or invalid session, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-authRouter.get("/me", requireAuth, asyncHandler(meHandler));
+authRouter.get("/me", requireAuthAllowUnverified, asyncHandler(meHandler));
 
 /**
  * @swagger
  * /api/auth/me:
  *   patch:
- *     summary: Update the current user's name and/or phone
- *     description: Email and roles can't be changed here — any other key is a 400. Send at least one of name or phone.
+ *     summary: Update the current user's name
+ *     description: Only the name can be changed. The phone number is fixed at signup and the email and roles can't be changed — any other key is a 400.
  *     tags: [Auth]
  *     security: [{ cookieAuth: [] }]
  *     requestBody:
@@ -168,7 +178,6 @@ authRouter.get("/me", requireAuth, asyncHandler(meHandler));
  *             type: object
  *             properties:
  *               name: { type: string, minLength: 1, maxLength: 100 }
- *               phone: { type: string, minLength: 7, maxLength: 20 }
  *     responses:
  *       200:
  *         content:
@@ -177,7 +186,61 @@ authRouter.get("/me", requireAuth, asyncHandler(meHandler));
  *               type: object
  *               properties:
  *                 user: { $ref: '#/components/schemas/User' }
- *       400: { description: Empty body, blank name, short phone or an unknown key, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       400: { description: Blank name or an unknown key, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  *       401: { description: No or invalid session, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
  */
-authRouter.patch("/me", requireAuth, writeLimiter, validateBody(updateProfileSchema), asyncHandler(updateMeHandler));
+authRouter.patch("/me", requireAuthAllowUnverified, writeLimiter, validateBody(updateProfileSchema), asyncHandler(updateMeHandler));
+
+/**
+ * @swagger
+ * /api/auth/verify-phone:
+ *   post:
+ *     summary: Confirm the SMS code sent at signup
+ *     description: "Open to an account that hasn't verified yet. 5 wrong attempts lock the current code (request a new one). On success the access cookie is re-issued. 409 if the phone is already verified."
+ *     tags: [Auth]
+ *     security: [{ cookieAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code: { type: string, pattern: '^[0-9]{6}$' }
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user: { $ref: '#/components/schemas/User' }
+ *       400: { description: Wrong, expired or missing code, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       409: { description: Already verified, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: Too many wrong attempts, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+authRouter.post("/verify-phone", requireAuthAllowUnverified, writeLimiter, otpLimiter, validateBody(verifyPhoneSchema), asyncHandler(verifyPhoneHandler));
+
+/**
+ * @swagger
+ * /api/auth/verify-phone/resend:
+ *   post:
+ *     summary: Send a new verification code
+ *     description: "Replaces the current code. 60-second cooldown and 5 sends per hour (429 with Retry-After). 502 if the SMS provider fails. 409 if already verified."
+ *     tags: [Auth]
+ *     security: [{ cookieAuth: [] }]
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 resendAfterSeconds: { type: integer }
+ *       409: { description: Already verified, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       429: { description: Cooldown or hourly cap, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ *       502: { description: SMS provider failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+ */
+authRouter.post("/verify-phone/resend", requireAuthAllowUnverified, writeLimiter, otpLimiter, asyncHandler(resendPhoneCodeHandler));
