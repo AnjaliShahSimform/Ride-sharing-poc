@@ -34,7 +34,10 @@ function hashesMatch(a: string, b: string): boolean {
 // provider failure leaves a valid code in place and the user simply resends
 // (after the cooldown). Rows for the same user are serialised by the row lock.
 export async function sendCode(userId: string, phone: string): Promise<void> {
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const code =
+    env.SMS_DRIVER === "console" && env.OTP_FIXED_CODE
+      ? env.OTP_FIXED_CODE
+      : String(randomInt(0, 1_000_000)).padStart(6, "0");
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {

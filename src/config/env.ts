@@ -100,6 +100,14 @@ const envSchema = z.object({
   // account needed — local dev); "twilio" calls Twilio's REST API and needs the
   // three TWILIO_* vars (sms.ts refuses to boot without them).
   SMS_DRIVER: z.enum(["console", "twilio"]).default("console"),
+  // Demo escape hatch: every verification code becomes this value. Honoured
+  // only with SMS_DRIVER=console (never alongside real SMS). Anyone who knows
+  // it can verify any account, so server.ts warns when it is set.
+  OTP_FIXED_CODE: z
+    .string()
+    .regex(/^\d{6}$/, "OTP_FIXED_CODE must be exactly 6 digits")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   TWILIO_ACCOUNT_SID: z.string().optional().transform((v) => v || undefined),
   TWILIO_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
   TWILIO_FROM: z.string().optional().transform((v) => v || undefined),

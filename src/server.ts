@@ -20,6 +20,9 @@ if (!env.REQUIRE_PHONE_VERIFICATION) {
 if (env.REQUIRE_PHONE_VERIFICATION && env.SMS_DRIVER === "console" && env.NODE_ENV === "production") {
   logger.warn("SMS_DRIVER=console in production: verification codes are only logged, nobody receives them");
 }
+if (env.OTP_FIXED_CODE && env.SMS_DRIVER === "console") {
+  logger.warn("OTP_FIXED_CODE is set: every phone verification code is the same fixed value");
+}
 
 if (env.RUN_WORKER_IN_PROCESS) {
   // A broker/SMTP problem must never take the API down, so failure to start
